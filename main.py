@@ -32,7 +32,7 @@ LOGIN_HTML = """
 </head>
 <body>
     <div class="login-box">
-        <h2 style="letter-spacing: 2px;">🚀 NITRO LOGIN</h2>
+        <h2 style="letter-spacing: 2px;">🫦 GHOP-GHOP GPS</h2>
         {% if error %}<div class="msg">{{error}}</div>{% endif %}
         <form method="post">
             <input type="text" name="userid" placeholder="USER ID" required>
@@ -77,7 +77,7 @@ DASH_HTML = """
     <div class="box">
         <form action="/logout" method="post"><button class="logout">LOGOUT: {{session['user']}}</button></form>
         <div style="clear:both;"></div>
-        <h2 style="margin-top:10px;">🚀 V82 AUTO-ROTATE</h2>
+        <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
         <div class="metric" id="cnt">0</div>
         
         <form action="/action" method="post" class="grid">
