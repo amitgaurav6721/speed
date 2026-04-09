@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-# --- CONFIG ---
+# --- CONFIG & DEFAULTS ---
 DEFAULTS = {
     "tag": "EGAS", "imei": "862567075041793", "vno": "BR03GB9117",
     "lat": "25.65", "lon": "84.78", "proto": "UDP"
@@ -72,19 +72,41 @@ HTML_V82 = """
 
 def fetch_khanansoft():
     session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0 Chrome/120.0.0.0'})
+    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'})
     url = "https://khanansoft.bihar.gov.in/portal/ePass/ViewPassDetailsNew.aspx"
+    
     while True:
         if status["firing"]:
             try:
-                # Simulasi PostBack Logic
-                res = session.get(url, timeout=5)
-                status["p_stat"] = "FETCHING..."
-                # Yahan logic date nikalne ka...
-                status["p_date"] = datetime.now().strftime("%d-%b-%Y %H:%M")
+                # 1. Get initial page to grab ASP hidden fields
+                resp = session.get(url, timeout=10)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                
+                data = {
+                    "__VIEWSTATE": soup.find(id="__VIEWSTATE")['value'],
+                    "__EVENTVALIDATION": soup.find(id="__EVENTVALIDATION")['value'],
+                    "txtVehicleNo": status["vno"],
+                    "btnSearch": "Search"
+                }
+                
+                # 2. Post the Search request
+                post_resp = session.post(url, data=data, timeout=10)
+                final_soup = BeautifulSoup(post_resp.text, 'html.parser')
+                
+                # 3. Find 'Challan Date' in the table
+                # Asli logic: Table mein 'Challan Date' ke baad dusra cell value hoti hai
+                target = final_soup.find(text=lambda x: x and 'Challan Date' in x)
+                if target:
+                    # ASP structures: usually <td>Challan Date</td><td>:</td><td>VALUE</td>
+                    extracted = target.find_next('td').find_next('td').text.strip()
+                    status["p_date"] = extracted
+                    status["p_stat"] = "✅ DATA CAPTURED"
+                else:
+                    status["p_stat"] = "❌ NO PASS FOUND"
+                
                 status["sync"] = datetime.now().strftime("%H:%M:%S")
-                status["p_stat"] = "LIVE SYNC ACTIVE"
-            except: status["p_stat"] = "PORTAL TIMEOUT"
+            except Exception as e:
+                status["p_stat"] = "⚠️ PORTAL ERROR"
         time.sleep(5)
 
 def firing_engine():
@@ -92,39 +114,50 @@ def firing_engine():
     while status["firing"]:
         try:
             now = datetime.now()
+            # Firing packet with user inputs
             pkt = f"$PVT,{status['tag']},2.1.1,NR,01,L,{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*".encode()
-            if status["proto"] == "UDP":
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                for _ in range(100):
-                    if not status["firing"]: break
-                    sock.sendto(pkt, target); status["count"] += 1
-                sock.close()
+            
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            for _ in range(100):
+                if not status["firing"]: break
+                sock.sendto(pkt, target)
+                status["count"] += 1
+            sock.close()
             time.sleep(1)
-        except: time.sleep(2)
+        except:
+            time.sleep(2)
 
 @app.route('/')
-def home(): return render_template_string(HTML_V82, **status)
+def home():
+    return render_template_string(HTML_V82, **status)
 
 @app.route('/data')
-def data(): return jsonify(status)
+def data():
+    return jsonify(status)
 
 @app.route('/action', methods=['POST'])
 def action():
     val = request.form.get('btn')
+    # Update global status with clean, capitalized inputs
     status.update({
-        "tag": (request.form.get('tag') or "EGAS").upper(),
-        "imei": (request.form.get('imei') or "862567075041793").upper(),
-        "vno": (request.form.get('vno') or "BR03GB9117").upper(),
-        "lat": request.form.get('lat') or "25.65",
-        "lon": request.form.get('lon') or "84.78",
+        "tag": (request.form.get('tag') or DEFAULTS['tag']).upper().strip(),
+        "imei": (request.form.get('imei') or DEFAULTS['imei']).upper().strip(),
+        "vno": (request.form.get('vno') or DEFAULTS['vno']).upper().strip(),
+        "lat": request.form.get('lat') or DEFAULTS['lat'],
+        "lon": request.form.get('lon') or DEFAULTS['lon'],
         "proto": request.form.get('proto', 'UDP')
     })
+    
     if val == "start" and not status["firing"]:
         status["firing"] = True
         threading.Thread(target=firing_engine, daemon=True).start()
-    elif val == "stop": status["firing"] = False
+    elif val == "stop":
+        status["firing"] = False
+        status["p_stat"] = "IDLE"
+    
     return home()
 
 if __name__ == "__main__":
+    # Multi-threading for Khanansoft sync
     threading.Thread(target=fetch_khanansoft, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
