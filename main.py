@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_smart_history_v1"
+app.secret_key = "nitro_v82_pro_max_history"
 
 # --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
@@ -88,7 +88,7 @@ DASH_HTML = """
             <div class="full">
                 <label>PROTOCOL (50 PKT/SEC)</label>
                 <select name="proto" id="proto" onchange="updateUI()">
-                    <option value="UDP" {% if proto == 'UDP' %}selected{% endif %}>UDP (Fastest)</option>
+                    <option value="UDP" {% if proto == 'UDP' %}selected{% endif %}>UDP</option>
                     <option value="TCP" {% if proto == 'TCP' %}selected{% endif %}>TCP</option>
                 </select>
             </div>
@@ -189,20 +189,23 @@ def log_to_firebase():
         date_key = now.strftime('%Y-%m-%d')
         time_key = now.strftime('%H%M%S')
         user_id = session.get('user')
+        vno = status["vno"]
 
         log_data = {
-            "Vehicle_No": status["vno"],
+            "Vehicle_No": vno,
             "IMEI_No": status["imei"],
             "User": user_id,
+            "Lat": status["lat"],
+            "Lon": status["lon"],
             "Last_Sync": timestamp,
             "Status": "Active"
         }
 
-        # 1. Update/Create Records for Vehicle
-        requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        # 1. Update Latest Vehicle Record
+        requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
 
-        # 2. Smart History Logging (Date -> User -> Time)
-        requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        # 2. Smart History Logging (Date -> User -> Vehicle -> Time)
+        requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{vno}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
 def firing_engine():
