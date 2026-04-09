@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_pro_max_history"
+app.secret_key = "nitro_v82_final_whatsapp_edition"
 
 # --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
@@ -24,19 +24,25 @@ LOGIN_HTML = """
         body { background: #000; color: #0f0; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
         .login-box { border: 2px solid #0f0; padding: 30px; border-radius: 15px; background: #050505; box-shadow: 0 0 20px #0f0; width: 300px; text-align: center; }
         input { width: 90%; padding: 12px; margin: 10px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-align: center; font-weight: bold; }
-        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
+        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; margin-bottom: 20px; }
         .msg { color: #f00; font-size: 13px; margin-bottom: 15px; font-weight: bold; }
+        .contact-admin { border-top: 1px solid #333; padding-top: 15px; font-size: 12px; color: #888; }
+        .contact-admin a { color: #0f0; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="login-box">
-        <h2>🚀 NITRO LOGIN</h2>
+        <h2 style="letter-spacing: 2px;">🚀 NITRO LOGIN</h2>
         {% if error %}<div class="msg">{{error}}</div>{% endif %}
         <form method="post">
             <input type="text" name="userid" placeholder="USER ID" required>
             <input type="password" name="password" placeholder="PASSWORD" required>
             <button class="btn">LOGIN</button>
         </form>
+        <div class="contact-admin">
+            FOR NEW ID OR HELP<br>
+            CONTACT ADMIN: <a href="https://wa.me/917464010787" target="_blank">WHATSAPP</a>
+        </div>
     </div>
 </body>
 </html>
@@ -201,10 +207,7 @@ def log_to_firebase():
             "Status": "Active"
         }
 
-        # 1. Update Latest Vehicle Record
         requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
-
-        # 2. Smart History Logging (Date -> User -> Vehicle -> Time)
         requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{vno}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
