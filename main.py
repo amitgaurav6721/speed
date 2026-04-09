@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_pro_ultra"
+app.secret_key = "nitro_v82_smart_history_v1"
 
 # --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
@@ -184,14 +184,25 @@ def get_user_data(uid):
 
 def log_to_firebase():
     try:
-        data = {
+        now = datetime.now()
+        timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+        date_key = now.strftime('%Y-%m-%d')
+        time_key = now.strftime('%H%M%S')
+        user_id = session.get('user')
+
+        log_data = {
             "Vehicle_No": status["vno"],
             "IMEI_No": status["imei"],
-            "User": session.get('user'),
-            "Last_Sync": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "User": user_id,
+            "Last_Sync": timestamp,
             "Status": "Active"
         }
-        requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=data, timeout=5)
+
+        # 1. Update/Create Records for Vehicle
+        requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+
+        # 2. Smart History Logging (Date -> User -> Time)
+        requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
 def firing_engine():
@@ -271,7 +282,7 @@ def action():
         if val == "start" and not status["firing"]:
             if all([status["imei"], status["vno"], status["lat"]]):
                 status["firing"] = True
-                log_to_firebase() # Logging to Data_Records
+                log_to_firebase()
                 threading.Thread(target=firing_engine, daemon=True).start()
         elif val == "stop": status["firing"] = False
     return redirect(url_for('dashboard'))
