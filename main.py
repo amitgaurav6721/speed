@@ -3,16 +3,13 @@ from datetime import datetime
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_pro_final"
+app.secret_key = "nitro_v82_pro_ultra"
 
 # --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
-TAG_LIST = [
-    "RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", 
-    "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"
-]
+TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
 # --- ENGINE STATE ---
 status = {"firing": False, "count": 0, "proto": "UDP", "imei": "", "vno": "", "lat": "", "lon": ""}
@@ -78,7 +75,10 @@ DASH_HTML = """
         <div class="metric" id="cnt">0</div>
         
         <form action="/action" method="post" class="grid">
-            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{vno}}" placeholder="BR01..." oninput="updateUI()"></div>
+            <div class="full">
+                <label>VEHICLE NO</label>
+                <input type="text" name="vno" id="vno" value="{{vno}}" placeholder="BR01..." oninput="this.value = this.value.toUpperCase(); updateUI();" onblur="checkVehicle()">
+            </div>
             <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{imei}}" placeholder="862..." oninput="updateUI()"></div>
             <div><label>LATITUDE (7 DIGIT)</label><input type="text" name="lat" id="lat" value="{{lat}}" oninput="updateUI()"></div>
             <div><label>LONGITUDE (7 DIGIT)</label><input type="text" name="lon" id="lon" value="{{lon}}" oninput="updateUI()"></div>
@@ -122,11 +122,9 @@ DASH_HTML = """
             let i = document.getElementById('imei').value;
             let rawLat = document.getElementById('lat').value;
             let rawLon = document.getElementById('lon').value;
-            
             let la = rawLat ? parseFloat(rawLat).toFixed(7) : "0.0000000";
             let lo = rawLon ? parseFloat(rawLon).toFixed(7) : "0.0000000";
-            
-            let d = new Date().toLocaleDateString('en-GB').replace(/\\//g, '');
+            let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
             let h = new Date().toLocaleTimeString('en-GB', {hour12: false}).replace(/:/g, '');
             let t = tags[currentCnt % tags.length];
 
@@ -140,6 +138,17 @@ DASH_HTML = """
                 let pos = [parseFloat(la), parseFloat(lo)];
                 map.setView(pos, 15);
                 marker.setLatLng(pos);
+            }
+        }
+
+        async function checkVehicle() {
+            let vno = document.getElementById('vno').value.toUpperCase();
+            if(!vno) return;
+            let res = await fetch(`/check_vehicle?vno=${vno}`);
+            let data = await res.json();
+            if(data.imei) {
+                document.getElementById('imei').value = data.imei;
+                updateUI();
             }
         }
 
@@ -172,6 +181,18 @@ def get_user_data(uid):
         r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", timeout=5)
         return r.json()
     except: return None
+
+def log_to_firebase():
+    try:
+        data = {
+            "Vehicle_No": status["vno"],
+            "IMEI_No": status["imei"],
+            "User": session.get('user'),
+            "Last_Sync": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "Status": "Active"
+        }
+        requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=data, timeout=5)
+    except: pass
 
 def firing_engine():
     target = ("vlts.bihar.gov.in", 9999)
@@ -208,7 +229,9 @@ def login():
             else:
                 session['user'] = uid
                 session['access_level'] = data.get('access_level', 'basic')
-                status.update({"lat": str(data.get('lat', '')), "lon": str(data.get('lon', ''))})
+                session['def_lat'] = str(data.get('lat', ''))
+                session['def_lon'] = str(data.get('lon', ''))
+                status.update({"lat": session['def_lat'], "lon": session['def_lon']})
                 return redirect(url_for('dashboard'))
         else: error = "INVALID ID OR PASSWORD"
     return render_template_string(LOGIN_HTML, error=error)
@@ -218,12 +241,25 @@ def dashboard():
     if 'user' not in session: return redirect(url_for('login'))
     return render_template_string(DASH_HTML, session=session, **status)
 
+@app.route('/check_vehicle')
+def check_vehicle():
+    vno = request.args.get('vno', '').upper()
+    try:
+        r = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", timeout=5)
+        data = r.json()
+        if data: return jsonify({"imei": data.get('IMEI_No')})
+    except: pass
+    return jsonify({"imei": None})
+
 @app.route('/action', methods=['POST'])
 def action():
     if 'user' not in session: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "reset":
-        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": "", "lon": ""})
+        status.update({
+            "firing": False, "count": 0, "imei": "", "vno": "", 
+            "lat": session.get('def_lat', ''), "lon": session.get('def_lon', '')
+        })
     else:
         status.update({
             "imei": request.form.get('imei', '').strip(),
@@ -235,6 +271,7 @@ def action():
         if val == "start" and not status["firing"]:
             if all([status["imei"], status["vno"], status["lat"]]):
                 status["firing"] = True
+                log_to_firebase() # Logging to Data_Records
                 threading.Thread(target=firing_engine, daemon=True).start()
         elif val == "stop": status["firing"] = False
     return redirect(url_for('dashboard'))
