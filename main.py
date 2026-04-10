@@ -146,6 +146,7 @@ DASH_HTML = """
                 document.getElementById('cnt').innerText = d.count.toLocaleString();
             });
         }, 1000);
+        updatePreview();
     </script>
 </body>
 </html>
@@ -154,9 +155,14 @@ DASH_HTML = """
 def log_to_firebase():
     try:
         now = datetime.now()
+        date_key = now.strftime('%Y-%m-%d')
+        time_key = now.strftime('%H%M%S')
+        user_id = session.get('user')
         vno = status["vno"]
-        log_data = {"Vehicle_No": vno, "IMEI_No": status["imei"], "User": session.get('user'), "Lat": status["lat"], "Lon": status["lon"], "Last_Sync": now.strftime('%Y-%m-%d %H:%M:%S'), "Status": "Active"}
+        log_data = {"Vehicle_No": vno, "IMEI_No": status["imei"], "User": user_id, "Lat": status["lat"], "Lon": status["lon"], "Last_Sync": now.strftime('%Y-%m-%d %H:%M:%S'), "Status": "Active"}
+        # RECORDS AND HISTORY BOTH FIXED
         requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{vno}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
 def firing_engine():
@@ -185,7 +191,10 @@ def login():
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
             session['access_level'] = data.get('access_level', 'basic')
-            status.update({"lat": str(data.get('lat', '25.65')), "lon": str(data.get('lon', '84.78'))})
+            # Save defaults in session for reset
+            session['def_lat'] = str(data.get('lat', '25.65'))
+            session['def_lon'] = str(data.get('lon', '84.78'))
+            status.update({"lat": session['def_lat'], "lon": session['def_lon']})
             return redirect(url_for('dashboard'))
         else: error = "INVALID ID OR PASSWORD"
     return render_template_string(LOGIN_HTML, error=error)
@@ -208,10 +217,7 @@ def action():
     if 'user' not in session: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "reset":
-        uid = session.get('user')
-        r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}")
-        user_data = r.json()
-        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": str(user_data.get('lat', '25.65')), "lon": str(user_data.get('lon', '84.78'))})
+        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": session.get('def_lat', '25.65'), "lon": session.get('def_lon', '84.78')})
     elif val == "start" and not status["firing"]:
         status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
         log_to_firebase()
