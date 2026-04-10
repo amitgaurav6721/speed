@@ -1,73 +1,71 @@
 import os, requests
-from datetime import datetime
-from flask import Flask, render_template_string, request, session, redirect
+from flask import Flask, render_template_string, request, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "ghop_ghop_admin_key_99"
+app.secret_key = "ghop_ghop_admin"
 
-# --- CONFIGURATION ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
-# --- ADMIN PANEL UI (Bade Fonts + Professional Look) ---
+# --- ADMIN LOGIN CREDENTIALS ---
+ADMIN_UID = "admin"
+ADMIN_PASS = "admin6721"
+
+# --- LOGIN HTML ---
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head><title>ADMIN LOGIN</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{background:#000;color:#0f0;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}.box{border:2px solid #0f0;padding:40px;text-align:center;border-radius:15px;background:#050505;}input{width:100%;padding:12px;margin:10px 0;background:#111;border:1px solid #0f0;color:#0f0;border-radius:5px;box-sizing:border-box;}.btn{padding:12px;width:100%;background:#0f0;color:#000;border:none;font-weight:bold;cursor:pointer;margin-top:10px;}</style></head>
+<body><div class="box"><h2>🔐 ADMIN CONTROL</h2>{% if error %}<p style="color:red">{{error}}</p>{% endif %}<form method="POST"><input name="uid" placeholder="ADMIN ID" required><input type="password" name="pw" placeholder="PASSWORD" required><button class="btn">ENTER SYSTEM</button></form></div></body></html>
+"""
+
+# --- ADMIN PANEL HTML ---
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GHOP-GHOP | VIP ADMIN</title>
+    <title>ULTRA ADMIN</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root { --neon: #0f0; --bg: #000; --card: #0a0a0a; }
-        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 15px; }
-        .nav { background: var(--card); padding: 20px; border-bottom: 2px solid var(--neon); display: flex; justify-content: space-between; font-weight: bold; font-size: 20px; }
-        .section { background: var(--card); padding: 25px; border-radius: 15px; margin: 20px 0; border: 1px solid #222; box-shadow: 0 0 15px rgba(0,255,0,0.1); }
-        h2 { color: var(--neon); font-size: 22px; text-transform: uppercase; border-left: 5px solid var(--neon); padding-left: 15px; }
-        input, button { background: #111; border: 1px solid #333; color: #fff; padding: 15px; border-radius: 8px; width: 100%; margin-bottom: 15px; font-size: 16px; }
-        button.primary { background: var(--neon); color: #000; font-weight: bold; border: none; cursor: pointer; transition: 0.3s; }
-        button.primary:hover { background: #0c0; transform: scale(1.01); }
-        .table-box { overflow-x: auto; margin-top: 20px; }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        th { background: #1a1a1a; color: var(--neon); padding: 18px; text-align: left; font-size: 14px; border-bottom: 2px solid #333; }
-        td { padding: 18px; border-bottom: 1px solid #111; font-size: 15px; }
-        .badge { padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .Active { color: #0f0; background: rgba(0,255,0,0.1); }
-        .Blocked { color: #f00; background: rgba(255,0,0,0.1); }
-        .row { display: flex; gap: 15px; }
+        body { background: var(--bg); color: #fff; font-family: sans-serif; padding: 15px; }
+        .nav { background: var(--card); padding: 15px; border-bottom: 2px solid var(--neon); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .section { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #222; margin-bottom: 20px; }
+        input, select, button { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; width: 100%; margin-bottom: 10px; box-sizing: border-box; }
+        button.primary { background: var(--neon); color: #000; font-weight: bold; border: none; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #222; }
+        .pro-badge { color: gold; font-weight: bold; border: 1px solid gold; padding: 2px 5px; border-radius: 3px; font-size: 10px; }
     </style>
 </head>
 <body>
-    <div class="nav"><span>🚀 GHOP-GHOP <span style="color:var(--neon)">VIP ADMIN</span></span></div>
+    <div class="nav">
+        <b>🚀 GHOP-GHOP ADMIN</b>
+        <a href="/logout" style="color:red; text-decoration:none;">LOGOUT</a>
+    </div>
 
     <div class="section">
-        <h2>➕ ADD NEW CLIENT</h2>
-        <form action="/add" method="POST">
-            <input name="new_uid" placeholder="User ID (Mobile No)" required>
-            <input name="new_pw" placeholder="Create Password" required>
-            <div class="row">
-                <input name="base_lat" placeholder="Default Latitude (e.g. 25.29)">
-                <input name="base_lon" placeholder="Default Longitude (e.g. 84.65)">
-            </div>
-            <input type="date" name="expiry" required>
-            <button class="primary">CREATE VIP ACCOUNT</button>
+        <h2>➕ CREATE / EDIT USER</h2>
+        <form action="/save" method="POST">
+            <input name="uid" placeholder="User ID (Mobile)" required>
+            <input name="pw" placeholder="Password" required>
+            <div style="display:flex; gap:10px;"><input name="lat" placeholder="Lat"><input name="lon" placeholder="Lon"></div>
+            <div style="display:flex; gap:10px;"><input type="date" name="expiry" required><select name="level"><option value="pro">Pro Mode</option><option value="normal">Normal</option></select></div>
+            <button class="primary">SAVE / UPDATE USER</button>
         </form>
     </div>
 
     <div class="section">
-        <h2>👥 ALL REGISTERED USERS</h2>
-        <div class="table-box">
+        <h2>👥 TOTAL USERS: {{users|length}}</h2>
+        <div style="overflow-x:auto;">
             <table>
-                <tr><th>USER ID</th><th>PASS</th><th>EXPIRY</th><th>LOCATION</th><th>STATUS</th><th>ACTION</th></tr>
+                <tr><th>USER</th><th>PASS</th><th>EXPIRY</th><th>LEVEL</th><th>ACTION</th></tr>
                 {% for uid, data in users.items() %}
                 <tr>
-                    <td><b>{{uid}}</b></td>
-                    <td>{{data.password}}</td>
-                    <td>{{data.expiry}}</td>
-                    <td style="color:#888;">{{data.lat}}, {{data.lon}}</td>
-                    <td><span class="badge {{data.status}}">{{data.status}}</span></td>
-                    <td>
-                        <a href="/toggle/{{uid}}" style="color:yellow; text-decoration:none; margin-right:10px;">[BLOCK]</a>
-                        <a href="/delete/{{uid}}" style="color:red; text-decoration:none;" onclick="return confirm('Delete user?')">[DELETE]</a>
-                    </td>
+                    <td>{{uid}}</td><td>{{data.password}}</td><td>{{data.expiry}}</td>
+                    <td>{% if data.access_level == 'pro' %}<span class="pro-badge">PRO</span>{% else %}STD{% endif %}</td>
+                    <td><a href="/toggle/{{uid}}" style="color:yellow;">[B]</a> <a href="/delete/{{uid}}" style="color:red;">[X]</a></td>
                 </tr>
                 {% endfor %}
             </table>
@@ -77,37 +75,47 @@ ADMIN_HTML = """
 </html>
 """
 
-# --- ROUTES ---
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if session.get('admin_logged_in'): return redirect(url_for('admin_panel'))
+    error = None
+    if request.method == 'POST':
+        if request.form.get('uid') == ADMIN_UID and request.form.get('pw') == ADMIN_PASS:
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_panel'))
+        error = "INVALID ACCESS"
+    return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/panel')
 def admin_panel():
+    if not session.get('admin_logged_in'): return redirect(url_for('login'))
     u = requests.get(f"{FB_URL}/users.json?auth={FB_SECRET}").json() or {}
     return render_template_string(ADMIN_HTML, users=u)
 
-@app.route('/add', methods=['POST'])
-def add_user():
-    uid = request.form.get('new_uid').strip()
-    p = {
-        "access_level": "pro", 
-        "expiry": request.form.get('expiry'), 
-        "password": request.form.get('new_pw'), 
-        "status": "Active", 
-        "lat": request.form.get('base_lat') or "25.2988", 
-        "lon": request.form.get('base_lon') or "84.6510"
-    }
-    requests.put(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", json=p)
-    return redirect('/')
+@app.route('/save', methods=['POST'])
+def save_user():
+    if not session.get('admin_logged_in'): return redirect('/')
+    uid = request.form.get('uid').strip()
+    data = {"password": request.form.get('pw'), "lat": request.form.get('lat') or "25.6", "lon": request.form.get('lon') or "84.7", "expiry": request.form.get('expiry'), "access_level": request.form.get('level'), "status": "Active"}
+    requests.patch(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", json=data)
+    return redirect(url_for('admin_panel'))
 
 @app.route('/toggle/<uid>')
 def toggle_user(uid):
+    if not session.get('admin_logged_in'): return redirect('/')
     r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
     new_s = "Blocked" if r.get('status') == "Active" else "Active"
     requests.patch(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", json={"status": new_s})
-    return redirect('/')
+    return redirect(url_for('admin_panel'))
 
 @app.route('/delete/<uid>')
 def delete_user(uid):
+    if not session.get('admin_logged_in'): return redirect('/')
     requests.delete(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}")
-    return redirect('/')
+    return redirect(url_for('admin_panel'))
+
+@app.route('/logout')
+def logout(): session.clear(); return redirect(url_for('login'))
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
