@@ -1,9 +1,9 @@
 import os, requests
 from datetime import datetime
-from flask import Flask, render_template_string, request, session, redirect
+from flask import Flask, render_template_string, request, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "ghop_ghop_ultra_secure"
+app.secret_key = "ghop_ghop_ultra_secure_fix"
 
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
@@ -44,7 +44,7 @@ ADMIN_HTML = """
         <h2>👥 USERS ACTIVITY ON {{selected_date}}</h2>
         <div style="overflow-x:auto;">
             <table>
-                <tr style="color:var(--neon)"><th>USER ID</th><th>FIRE COUNT (CALCULATED)</th><th>ACTION</th></tr>
+                <tr style="color:var(--neon)"><th>USER ID</th><th>FIRE COUNT</th><th>ACTION</th></tr>
                 {% for uid, data in users.items() %}
                 <tr>
                     <td><b>{{uid}}</b></td>
@@ -57,33 +57,48 @@ ADMIN_HTML = """
             </table>
         </div>
     </div>
-    </body>
+
+    <script>
+    function editU(u,p,la,lo,e,lvl) {
+        // Yahan logic add kar sakte ho boxes bharne ka
+        alert("Editing: " + u);
+    }
+    </script>
+</body>
 </html>
 """
+
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if session.get('admin_in'): return redirect('/panel')
+    if request.method == 'POST':
+        if request.form.get('uid') == ADMIN_UID and request.form.get('pw') == ADMIN_PASS:
+            session['admin_in'] = True
+            return redirect('/panel')
+    return render_template_string('<body style="background:#000;color:#0f0;text-align:center;padding:50px;"><form method="POST" style="border:1px solid #0f0;display:inline-block;padding:30px;"><h2>ADMIN LOGIN</h2><input name="uid" placeholder="ID"><br><br><input type="password" name="pw" placeholder="PASS"><br><br><button>ENTER</button></form></body>')
 
 @app.route('/panel')
 def admin_panel():
     if not session.get('admin_in'): return redirect('/')
-    
-    # Date filter logic
     target_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-    
-    # Get all users and the history for specific date
     users = requests.get(f"{FB_URL}/users.json?auth={FB_SECRET}").json() or {}
     all_history = requests.get(f"{FB_URL}/Attack_History/{target_date}.json?auth={FB_SECRET}").json() or {}
     
-    # User-wise Calculation
     calculated_counts = {}
-    if all_history:
-        for uid, vehicles in all_history.items():
-            user_total = 0
-            if isinstance(vehicles, dict):
-                for vno, times in vehicles.items():
-                    if isinstance(times, dict):
-                        # Ginn rahe hain kitne time stamps (packets) bhejey gaye
-                        user_total += len(times)
-            calculated_counts[uid] = user_total
+    for uid, vehicles in all_history.items():
+        user_total = 0
+        if isinstance(vehicles, dict):
+            for vno, times in vehicles.items():
+                if isinstance(times, dict):
+                    user_total += len(times)
+        calculated_counts[uid] = user_total
 
     return render_template_string(ADMIN_HTML, users=users, counts=calculated_counts, selected_date=target_date)
 
-# ... (Login/Logout/Save routes as before) ...
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/')
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
