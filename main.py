@@ -12,7 +12,6 @@ TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD",
 
 status = {"firing": False, "count": 0, "proto": "UDP", "imei": "", "vno": "", "lat": "25.65", "lon": "84.78", "last_pkt": "Ready..."}
 
-# --- LOGIN HTML (SAME) ---
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -96,21 +95,19 @@ DASH_HTML = """
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         var marker = L.marker([{{lat or 25.65}}, {{lon or 84.78}}]).addTo(map);
 
-        // Map Fix: Move marker and center map
         function updateMap(lat, lon) {
             let pos = [parseFloat(lat), parseFloat(lon)];
             map.setView(pos, 15);
             marker.setLatLng(pos);
         }
 
-        // Live Preview Fix: Build string on the fly
         function updatePreview() {
             let imei = document.getElementById('imei').value;
             let vno = document.getElementById('vno').value;
-            let lat = parseFloat(document.getElementById('lat').value).toFixed(6);
-            let lon = parseFloat(document.getElementById('lon').value).toFixed(6);
+            let lat = parseFloat(document.getElementById('lat').value || 0).toFixed(6);
+            let lon = parseFloat(document.getElementById('lon').value || 0).toFixed(6);
             let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
-            let t = new Date().toLocaleTimeString('en-GB').replace(/:/g, '');
+            let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
             
             let str = `$PVT,RA18,1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
             let pre = document.getElementById('preview');
@@ -138,7 +135,7 @@ DASH_HTML = """
                     let ln = pos.coords.longitude.toFixed(6);
                     document.getElementById('lat').value = lt;
                     document.getElementById('lon').value = ln;
-                    updateMap(lt, ln); // MAP FIX HERE
+                    updateMap(lt, ln);
                     updatePreview();
                 }, () => alert("Location denied."));
             }
@@ -154,37 +151,81 @@ DASH_HTML = """
 </html>
 """
 
-# --- BACKEND LOGIC ---
+def log_to_firebase():
+    try:
+        now = datetime.now()
+        vno = status["vno"]
+        log_data = {"Vehicle_No": vno, "IMEI_No": status["imei"], "User": session.get('user'), "Lat": status["lat"], "Lon": status["lon"], "Last_Sync": now.strftime('%Y-%m-%d %H:%M:%S'), "Status": "Active"}
+        requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+    except: pass
+
+def firing_engine():
+    target = ("vlts.bihar.gov.in", 9999)
+    while status["firing"]:
+        try:
+            tag = TAG_LIST[status["count"] % len(TAG_LIST)]
+            now = datetime.now()
+            pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*".encode()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.sendto(pkt, target)
+            status["count"] += 1
+            sock.close()
+            time.sleep(0.02)
+        except: time.sleep(1)
+
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if 'user' in session: return redirect(url_for('dashboard'))
+    error = None
+    if request.method == 'POST':
+        uid = request.form.get('userid', '').strip()
+        pw = request.form.get('password', '').strip()
+        r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}")
+        data = r.json()
+        if data and str(data.get('password')) == str(pw):
+            session['user'] = uid
+            session['access_level'] = data.get('access_level', 'basic')
+            status.update({"lat": str(data.get('lat', '25.65')), "lon": str(data.get('lon', '84.78'))})
+            return redirect(url_for('dashboard'))
+        else: error = "INVALID ID OR PASSWORD"
+    return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user' not in session: return redirect(url_for('login'))
+    return render_template_string(DASH_HTML, session=session, **status)
+
+@app.route('/check_vehicle')
+def check_vehicle():
+    vno = request.args.get('vno', '').upper().strip()
+    r = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}")
+    data = r.json()
+    if data: return jsonify({"imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')})
+    return jsonify({"imei": None})
 
 @app.route('/action', methods=['POST'])
 def action():
     if 'user' not in session: return redirect(url_for('login'))
     val = request.form.get('btn')
-    
     if val == "reset":
-        # RESET FIX: Firebase se user ka default location wapas lo
         uid = session.get('user')
         r = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}")
         user_data = r.json()
-        status.update({
-            "firing": False, "count": 0, "imei": "", "vno": "", 
-            "lat": str(user_data.get('lat', '25.65')), 
-            "lon": str(user_data.get('lon', '84.78')), 
-            "last_pkt": "Ready..."
-        })
+        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": str(user_data.get('lat', '25.65')), "lon": str(user_data.get('lon', '84.78'))})
     elif val == "start" and not status["firing"]:
-        status.update({
-            "imei": request.form.get('imei').strip(), 
-            "vno": request.form.get('vno').upper().strip(), 
-            "lat": request.form.get('lat').strip(), 
-            "lon": request.form.get('lon').strip(), 
-            "firing": True
-        })
+        status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
         log_to_firebase()
         threading.Thread(target=firing_engine, daemon=True).start()
-    elif val == "stop":
-        status["firing"] = False
-    
+    elif val == "stop": status["firing"] = False
     return redirect(url_for('dashboard'))
 
-# ... (Baki firing_engine, login, check_vehicle same rahenge) ...
+@app.route('/data')
+def data(): return jsonify(status)
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
