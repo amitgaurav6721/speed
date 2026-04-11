@@ -99,13 +99,18 @@ DASH_HTML = """
         }
 
         function updatePreview() {
+            let tags = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"];
+            let count = parseInt(document.getElementById('cnt').innerText) || 0;
+            let tag = tags[count % tags.length];
+            
             let imei = document.getElementById('imei').value;
             let vno = document.getElementById('vno').value;
             let lat = parseFloat(document.getElementById('lat').value || 0).toFixed(6);
             let lon = parseFloat(document.getElementById('lon').value || 0).toFixed(6);
             let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
             let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
-            let str = `$PVT,RA18,1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
+            
+            let str = `$PVT,${tag},1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
             let pre = document.getElementById('preview');
             if(pre) pre.innerText = str;
         }
@@ -130,9 +135,6 @@ DASH_HTML = """
             let data = await res.json();
             if(data.imei) { 
                 document.getElementById('imei').value = data.imei;
-                document.getElementById('lat').value = data.lat;
-                document.getElementById('lon').value = data.lon;
-                updateMap(data.lat, data.lon);
                 updatePreview();
             }
         }
@@ -142,6 +144,7 @@ DASH_HTML = """
                 document.getElementById('cnt').innerText = d.count.toLocaleString();
                 let pre = document.getElementById('preview');
                 if(pre && d.firing) { pre.innerText = d.last_pkt; }
+                else if (pre) { updatePreview(); } // Jab firing nahi tabhi rotate dikhe
             });
         }, 1000);
         updatePreview();
@@ -206,7 +209,7 @@ def check_vehicle():
     vno = request.args.get('vno', '').upper().strip()
     r = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}")
     data = r.json()
-    if data: return jsonify({"imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')})
+    if data: return jsonify({"imei": data.get('IMEI_No')})
     return jsonify({"imei": None})
 
 @app.route('/action', methods=['POST'])
