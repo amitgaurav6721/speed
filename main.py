@@ -74,8 +74,8 @@ DASH_HTML = """
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
         </form>
-        <hr style="border:1px solid #111; margin: 15px 0;">
-        <a href="/restore_my_data" style="color:yellow; text-decoration:none; font-size:12px;">🔄 RESTORE OLD IMEI DATA</a>
+        <hr style="border:1px solid #111; margin:15px 0;">
+        <a href="/restore_my_data" style="color:yellow; text-decoration:none; font-size:11px; display:block; text-align:center;">🔄 CLICK HERE TO RESTORE 100+ VEHICLES DATA</a>
     </div>
     <script>
         async function checkVehicle() {
@@ -134,7 +134,7 @@ def action():
     if not uid: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "start":
-        vno, imei = request.form.get('vno').strip().upper(), request.form.get('imei').strip()
+        vno, imei = request.form.get('vno', '').strip().upper(), request.form.get('imei', '').strip()
         if vno and imei:
             user_sessions[uid].update({"firing": True, "vno": vno, "imei": imei, "lat": request.form.get('lat'), "lon": request.form.get('lon'), "count": 0})
             log_data = {"Vehicle_No": vno, "IMEI_No": imei, "Lat": user_sessions[uid]["lat"], "Lon": user_sessions[uid]["lon"], "Time": get_ist_time().strftime('%H:%M:%S')}
@@ -162,12 +162,18 @@ def restore_data():
     if history:
         for date in history:
             for user in history[date]:
-                for vno_key in history[date][user]:
-                    item = history[date][user][vno_key]
-                    if item.get('Vehicle_No') and item.get('IMEI_No'):
-                        requests.put(f"{FB_URL}/Data_Records/{item['Vehicle_No']}.json?auth={FB_SECRET}", json=item)
+                for key in history[date][user]:
+                    node = history[date][user][key]
+                    if isinstance(node, dict) and "IMEI_No" not in node:
+                        for time_node in node:
+                            data = node[time_node]
+                            if data.get('Vehicle_No') and data.get('IMEI_No'):
+                                requests.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
+                                count += 1
+                    elif isinstance(node, dict) and node.get('Vehicle_No'):
+                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
                         count += 1
-    return f"Success! {count} vehicles restored. <a href='/dashboard'>Go Back</a>"
+    return f"Bhai, {count} vehicles restored! <a href='/dashboard'>Go Back</a>"
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
