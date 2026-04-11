@@ -81,7 +81,7 @@ DASH_HTML = """
             <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{status.lat}}" oninput="updatePreview();"></div>
             <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{status.lon}}" oninput="updatePreview();"></div>
             <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
-            <div class="full"><label>📋 PACKET PREVIEW (MIJO FORMAT)</label><div class="preview" id="preview">Ready...</div></div>
+            <div class="full"><label>📋 PACKET PREVIEW </label><div class="preview" id="preview">Ready...</div></div>
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
             <button class="btn reset full" name="btn" value="reset">🔄 RESET ALL</button>
