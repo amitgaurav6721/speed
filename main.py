@@ -74,6 +74,8 @@ DASH_HTML = """
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
         </form>
+        <hr style="border:1px solid #111; margin: 15px 0;">
+        <a href="/restore_my_data" style="color:yellow; text-decoration:none; font-size:12px;">🔄 CLICK HERE TO RESTORE DELETED DATA</a>
     </div>
     <script>
         async function checkVehicle() {
@@ -155,6 +157,7 @@ def data():
 
 @app.route('/restore_my_data')
 def restore_data():
+    # History se data nikaal kar Records mein restore karne ke liye
     history = requests.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
     count = 0
     if history:
@@ -165,7 +168,7 @@ def restore_data():
                     if item.get('Vehicle_No') and item.get('IMEI_No'):
                         requests.put(f"{FB_URL}/Data_Records/{item['Vehicle_No']}.json?auth={FB_SECRET}", json=item)
                         count += 1
-    return f"Success! {count} vehicles restored."
+    return f"Success! {count} vehicles restored in Data_Records. <a href='/dashboard'>Go to Dashboard</a>"
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
