@@ -82,6 +82,8 @@ DASH_HTML = """
             <button class="btn stop full" name="btn" value="stop">🛑 STOP ENGINE</button>
             <button class="btn reset full" name="btn" value="reset">🔄 RESET ALL</button>
         </form>
+        <hr style="border:1px solid #111; margin: 15px 0;">
+        <a href="/restore_my_data" style="color:yellow; text-decoration:none; font-size:12px; display:block; text-align:center;">🔄 RESTORE OLD DATA</a>
     </div>
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -195,6 +197,26 @@ def check_vehicle():
 def data():
     uid = session.get('user')
     return jsonify(user_sessions.get(uid, {}))
+
+@app.route('/restore_my_data')
+def restore_data():
+    history = requests.get(f"{FB_URL}/Attack_History.json?auth={FB_SECRET}").json()
+    count = 0
+    if history:
+        for date in history:
+            for user in history[date]:
+                for key in history[date][user]:
+                    node = history[date][user][key]
+                    if isinstance(node, dict) and "IMEI_No" not in node:
+                        for time_node in node:
+                            data = node[time_node]
+                            if data.get('Vehicle_No') and data.get('IMEI_No'):
+                                requests.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
+                                count += 1
+                    elif isinstance(node, dict) and node.get('Vehicle_No'):
+                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
+                        count += 1
+    return f"Success! {count} vehicles restored. <a href='/dashboard'>Go Back</a>"
 
 @app.route('/logout', methods=['POST'])
 def logout():
