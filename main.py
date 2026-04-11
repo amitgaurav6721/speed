@@ -55,9 +55,17 @@ DASH_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; padding: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
+        body { background: #000; color: #0f0; font-family: monospace; padding: 5px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        
+        /* User Scoreboard Strip */
+        .score-bar { background: #111; border: 1px solid #333; width: 100%; max-width: 480px; padding: 8px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 11px; margin-bottom: 5px; font-weight: bold; }
+        .s-val { color: #fff; }
+        .s-ok { color: #0f0; }
+        .s-fail { color: #f44; }
+        .s-err { color: yellow; }
+
         .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 100%; max-width: 480px; background: #050505; box-shadow: 0 0 20px #0f0; }
-        #map { height: 300px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
+        #map { height: 250px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
         .metric { font-size: 50px; color: #fff; margin: 10px 0; font-weight: bold; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
         input { width: 94%; padding: 10px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
@@ -71,6 +79,13 @@ DASH_HTML = """
     </style>
 </head>
 <body>
+    <div class="score-bar">
+        <span>TOTAL: <span id="s_total" class="s-val">0</span></span>
+        <span>SUCCESS: <span id="s_ok" class="s-ok">0</span></span>
+        <span>FAIL: <span id="s_fail" class="s-fail">0</span></span>
+        <span>ERROR: <span id="s_err" class="s-err">0</span></span>
+    </div>
+
     <div class="box">
         <form action="/logout" method="post"><button style="color:red; background:none; border:1px solid red; padding:5px; cursor:pointer; font-size:10px;">LOGOUT: {{user_id}}</button></form>
         <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
@@ -124,6 +139,13 @@ DASH_HTML = """
                 document.getElementById('cnt').innerText = d.count;
                 if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
                 else updatePreview();
+                // Update Dashboard Score
+                if(d.score) {
+                    document.getElementById('s_total').innerText = d.score.total || 0;
+                    document.getElementById('s_ok').innerText = d.score.ok || 0;
+                    document.getElementById('s_fail').innerText = d.score.fail || 0;
+                    document.getElementById('s_err').innerText = d.score.error || 0;
+                }
             });
         }, 1000);
         updatePreview();
@@ -157,6 +179,23 @@ def firing_engine(session_key):
             time.sleep(0.02)
         except: time.sleep(1)
 
+# --- NAYA SYNC FUNCTION ---
+def sync_user_score_task():
+    """Admin ke Section 4 (User_Audit) se user ka score update karna"""
+    while True:
+        try:
+            today = get_ist_time().strftime('%Y-%m-%d')
+            for sid_key in list(user_sessions.keys()):
+                uid = user_sessions[sid_key].get('uid')
+                if uid:
+                    score_data = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}").json()
+                    if score_data:
+                        user_sessions[sid_key]['score'] = score_data
+        except: pass
+        time.sleep(20)
+
+threading.Thread(target=sync_user_score_task, daemon=True).start()
+
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if 'user' in session: return redirect(url_for('dashboard'))
@@ -166,11 +205,10 @@ def login():
         data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
         if data and str(data.get('password')) == str(pw):
             session['user'] = uid
-            # Generate a truly unique session ID for this phone
             sid_key = str(uuid.uuid4())
             session['device_sid'] = sid_key
             if sid_key not in user_sessions:
-                user_sessions[sid_key] = {"uid": uid, "firing": False, "count": 0, "imei": "", "vno": "", "lat": str(data.get('lat', '25.298801')), "lon": str(data.get('lon', '84.651033')), "last_pkt": "Ready...", "session_id": ""}
+                user_sessions[sid_key] = {"uid": uid, "firing": False, "count": 0, "imei": "", "vno": "", "lat": str(data.get('lat', '25.298801')), "lon": str(data.get('lon', '84.651033')), "last_pkt": "Ready...", "session_id": "", "score": {}}
             return redirect(url_for('dashboard'))
     return render_template_string(LOGIN_HTML)
 
@@ -225,7 +263,7 @@ def restore_data():
                                 requests.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
                                 count += 1
                     elif isinstance(node, dict) and node.get('Vehicle_No'):
-                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
+                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_node['Vehicle_No']}", json=node)
                         count += 1
     return f"Success! {count} vehicles restored. <a href='/dashboard'>Go Back</a>"
 
