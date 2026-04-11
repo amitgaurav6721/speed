@@ -17,7 +17,6 @@ def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
 def get_sid():
-    # 100% Unique Device Session ID
     return session.get('device_sid', 'guest')
 
 LOGIN_HTML = """
@@ -55,17 +54,17 @@ DASH_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; padding: 5px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        body { background: #000; color: #0f0; font-family: monospace; padding: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
         
-        /* User Scoreboard Strip */
-        .score-bar { background: #111; border: 1px solid #333; width: 100%; max-width: 480px; padding: 8px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 11px; margin-bottom: 5px; font-weight: bold; }
-        .s-val { color: #fff; }
-        .s-ok { color: #0f0; }
-        .s-fail { color: #f44; }
-        .s-err { color: yellow; }
+        /* User Scoreboard CSS */
+        .score-bar { background: #050505; border: 1px solid #0f0; width: 100%; max-width: 480px; padding: 10px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 12px; margin-bottom: -10px; box-shadow: 0 0 10px #0f0; }
+        .s-val { color: #fff; font-weight: bold; }
+        .s-ok { color: #0f0; font-weight: bold; }
+        .s-fail { color: #f00; font-weight: bold; }
+        .s-err { color: yellow; font-weight: bold; }
 
         .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 100%; max-width: 480px; background: #050505; box-shadow: 0 0 20px #0f0; }
-        #map { height: 250px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
+        #map { height: 300px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
         .metric { font-size: 50px; color: #fff; margin: 10px 0; font-weight: bold; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
         input { width: 94%; padding: 10px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
@@ -134,12 +133,14 @@ DASH_HTML = """
             if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
         }
 
+        // 30 SECONDS REFRESH INTERVAL FOR SCORE
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count;
                 if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
                 else updatePreview();
-                // Update Dashboard Score
+                
+                // Update User Scoreboard
                 if(d.score) {
                     document.getElementById('s_total').innerText = d.score.total || 0;
                     document.getElementById('s_ok').innerText = d.score.ok || 0;
@@ -147,7 +148,8 @@ DASH_HTML = """
                     document.getElementById('s_err').innerText = d.score.error || 0;
                 }
             });
-        }, 1000);
+        }, 30000); 
+
         updatePreview();
     </script>
 </body>
@@ -178,23 +180,6 @@ def firing_engine(session_key):
             sock.close()
             time.sleep(0.02)
         except: time.sleep(1)
-
-# --- NAYA SYNC FUNCTION ---
-def sync_user_score_task():
-    """Admin ke Section 4 (User_Audit) se user ka score update karna"""
-    while True:
-        try:
-            today = get_ist_time().strftime('%Y-%m-%d')
-            for sid_key in list(user_sessions.keys()):
-                uid = user_sessions[sid_key].get('uid')
-                if uid:
-                    score_data = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}").json()
-                    if score_data:
-                        user_sessions[sid_key]['score'] = score_data
-        except: pass
-        time.sleep(20)
-
-threading.Thread(target=sync_user_score_task, daemon=True).start()
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -245,6 +230,16 @@ def check_vehicle():
 @app.route('/data')
 def data():
     sid_key = get_sid()
+    s_data = user_sessions.get(sid_key, {})
+    if s_data and 'uid' in s_data:
+        try:
+            today = get_ist_time().strftime('%Y-%m-%d')
+            uid = s_data['uid']
+            # Direct Sync with Admin Section 4 (User_Audit)
+            score_res = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}", timeout=3).json()
+            if score_res:
+                user_sessions[sid_key]['score'] = score_res
+        except: pass
     return jsonify(user_sessions.get(sid_key, {}))
 
 @app.route('/restore_my_data')
@@ -263,7 +258,7 @@ def restore_data():
                                 requests.put(f"{FB_URL}/Data_Records/{data['Vehicle_No']}.json?auth={FB_SECRET}", json=data)
                                 count += 1
                     elif isinstance(node, dict) and node.get('Vehicle_No'):
-                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_node['Vehicle_No']}", json=node)
+                        requests.put(f"{FB_URL}/Data_Records/{node['Vehicle_No']}.json?auth={FB_SECRET}", json=node)
                         count += 1
     return f"Success! {count} vehicles restored. <a href='/dashboard'>Go Back</a>"
 
