@@ -10,7 +10,6 @@ FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
 
-# Global store based on internal session ID for multi-device isolation
 user_sessions = {}
 
 def get_ist_time():
@@ -55,14 +54,11 @@ DASH_HTML = """
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background: #000; color: #0f0; font-family: monospace; padding: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
-        
-        /* User Scoreboard CSS */
-        .score-bar { background: #050505; border: 1px solid #0f0; width: 100%; max-width: 480px; padding: 10px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 12px; margin-bottom: -10px; box-shadow: 0 0 10px #0f0; }
+        .score-bar { background: #050505; border: 1px solid #0f0; width: 100%; max-width: 480px; padding: 10px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 11px; margin-bottom: -10px; box-shadow: 0 0 10px #0f0; }
         .s-val { color: #fff; font-weight: bold; }
         .s-ok { color: #0f0; font-weight: bold; }
         .s-fail { color: #f00; font-weight: bold; }
         .s-err { color: yellow; font-weight: bold; }
-
         .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 100%; max-width: 480px; background: #050505; box-shadow: 0 0 20px #0f0; }
         #map { height: 300px; width: 100%; max-width: 480px; border: 2px solid #0f0; border-radius: 15px; }
         .metric { font-size: 50px; color: #fff; margin: 10px 0; font-weight: bold; }
@@ -84,7 +80,6 @@ DASH_HTML = """
         <span>FAIL: <span id="s_fail" class="s-fail">0</span></span>
         <span>ERROR: <span id="s_err" class="s-err">0</span></span>
     </div>
-
     <div class="box">
         <form action="/logout" method="post"><button style="color:red; background:none; border:1px solid red; padding:5px; cursor:pointer; font-size:10px;">LOGOUT: {{user_id}}</button></form>
         <h2 style="margin-top:10px;">💋 GHOP-GHOP GPS 💋</h2>
@@ -133,14 +128,12 @@ DASH_HTML = """
             if(data.imei) { document.getElementById('imei').value = data.imei; updatePreview(); }
         }
 
-        // 30 SECONDS REFRESH INTERVAL FOR SCORE
+        // AUTO REFRESH 30 SECONDS
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count;
                 if(d.firing) document.getElementById('preview').innerText = d.last_pkt;
                 else updatePreview();
-                
-                // Update User Scoreboard
                 if(d.score) {
                     document.getElementById('s_total').innerText = d.score.total || 0;
                     document.getElementById('s_ok').innerText = d.score.ok || 0;
@@ -211,7 +204,6 @@ def action():
     uid = session.get('user')
     sid_key = get_sid()
     if not uid or sid_key not in user_sessions: return redirect(url_for('login'))
-    
     val = request.form.get('btn')
     if val == "start" and not user_sessions[sid_key]["firing"]:
         user_sessions[sid_key].update({"firing":True, "session_id":get_ist_time().strftime('%H%M%S'), "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
@@ -235,8 +227,8 @@ def data():
         try:
             today = get_ist_time().strftime('%Y-%m-%d')
             uid = s_data['uid']
-            # Direct Sync with Admin Section 4 (User_Audit)
-            score_res = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}", timeout=3).json()
+            # FETCHING DIRECT FROM USER_AUDIT
+            score_res = requests.get(f"{FB_URL}/User_Audit/{today}/{uid}.json?auth={FB_SECRET}", timeout=5).json()
             if score_res:
                 user_sessions[sid_key]['score'] = score_res
         except: pass
