@@ -13,6 +13,7 @@ TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD",
 status = {"firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.298801", "lon": "84.651033", "last_pkt": "Ready...", "session_id": ""}
 
 def get_ist_time():
+    # Forced IST (+5:30) for Render Servers
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
 LOGIN_HTML = """
@@ -126,7 +127,7 @@ def log_to_firebase():
     try:
         now = get_ist_time()
         sid = status["session_id"]
-        # History updated with Session ID
+        # Har attack alag session folder mein save hoga
         path = f"{FB_URL}/Attack_History/{now.strftime('%Y-%m-%d')}/{session['user']}/{status['vno']}/{sid}.json?auth={FB_SECRET}"
         log_data = {"Vehicle_No": status["vno"], "IMEI_No": status["imei"], "Lat": status["lat"], "Lon": status["lon"], "Start_Time": now.strftime('%H:%M:%S'), "Status": "Active"}
         requests.put(path, json=log_data, timeout=5)
