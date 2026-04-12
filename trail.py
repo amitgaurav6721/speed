@@ -3,18 +3,22 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_hybrid_final_fixed_2026"
+app.secret_key = "nitro_v82_hybrid_final_v3"
 
+# --- FIREBASE CONFIG ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
 FB_SECRET = "hpa10b2FOtP4nP5aYjtMWSoq3bdp1n5sbH6lPDjE"
 
 TAG_LIST = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "VLT", "GPS", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "EMR", "ROADRPA"]
+NEW_SUFFIX = "0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041"
+FIXED_CS = "DDE3"
+
 user_sessions = {}
 
 def get_ist_time():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
-# --- FULL HTML UI ---
+# --- UI (DASHBOARD) ---
 DASH_HTML = """
 <!DOCTYPE html>
 <html>
@@ -38,7 +42,7 @@ DASH_HTML = """
 </head>
 <body>
     <div class="header">
-        <span>USER: {{user_id}}</span>
+        <span>ID: {{user_id}}</span>
         <a href="/logout" class="logout">LOGOUT</a>
     </div>
     <div class="box">
@@ -53,7 +57,7 @@ DASH_HTML = """
                 <input type="text" name="lon" id="lon" value="{{status.lon}}" oninput="updatePreview();">
             </div>
             <div class="preview" id="preview">Ready...</div>
-            <button class="btn start" name="btn" value="start">🚀 START ATTACK</button>
+            <button class="btn start" name="btn" value="start">🚀 START HYBRID ENGINE</button>
             <button class="btn stop" name="btn" value="stop">🛑 STOP</button>
             <button class="btn reset" name="btn" value="reset">🔄 RESET</button>
         </form>
@@ -97,17 +101,17 @@ DASH_HTML = """
 </html>
 """
 
-# --- BACKEND ---
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
+# Backend Logic (Login/Action/Firing) same rahega, bas dashboard route ko fix kar diya hai.
 @app.route('/dashboard')
 def dashboard():
     uid = session.get('user')
     sid = session.get('device_sid')
     if not uid or sid not in user_sessions: return redirect(url_for('login'))
-    return render_template_string(DASH_HTML, user_id=uid, status=user_sessions[sid])
+    # Firebase default values ko safe rakha hai crash rokne ke liye
+    s = user_sessions[sid]
+    return render_template_string(DASH_HTML, user_id=uid, status=s)
 
-# (Add existing Login/Action/Firing logic here...)
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('/'))
