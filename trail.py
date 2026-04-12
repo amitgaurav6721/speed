@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = "nitro_v82_hybrid_final_fixed"
+app.secret_key = "nitro_v82_hybrid_ultimate_fixed_2026"
 
 # --- FIREBASE CONFIG ---
 FB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/"
@@ -21,34 +21,7 @@ def get_ist_time():
 def get_sid():
     return session.get('device_sid', 'guest')
 
-# --- LOGIN HTML ---
-LOGIN_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>NITRO V82 - LOGIN</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { background: #000; color: #0f0; font-family: monospace; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .login-box { border: 2px solid #0f0; padding: 30px; border-radius: 15px; background: #050505; box-shadow: 0 0 20px #0f0; width: 300px; text-align: center; }
-        input { width: 90%; padding: 12px; margin: 10px 0; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; text-align: center; font-weight: bold; }
-        .btn { padding: 12px; width: 100%; background: #0f0; color: #000; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
-    </style>
-</head>
-<body>
-    <div class="login-box">
-        <h2>🫦 GHOP-GHOP GPS</h2>
-        <form method="post">
-            <input type="text" name="userid" placeholder="USER ID" required>
-            <input type="password" name="password" placeholder="PASSWORD" required>
-            <button class="btn">LOGIN</button>
-        </form>
-    </div>
-</body>
-</html>
-"""
-
-# --- DASHBOARD HTML ---
+# --- DASHBOARD HTML (WITH AUTO-IMEI FETCH) ---
 DASH_HTML = """
 <!DOCTYPE html>
 <html>
@@ -67,7 +40,7 @@ DASH_HTML = """
         input { width: 92%; padding: 12px; background: #111; border: 1px solid #0f0; color: #0f0; border-radius: 5px; font-weight: bold; }
         .full { grid-column: span 2; }
         .btn { padding: 15px; font-size: 16px; cursor: pointer; border: none; border-radius: 8px; width: 100%; font-weight: bold; text-transform: uppercase; margin-top: 5px; }
-        .start { background: #008000; color: #fff; } .stop { background: #800; color: #fff; } .reset { background: #333; color: #fff; border: 1px solid #555; }
+        .start { background: #008000; color: #fff; } .stop { background: #800; color: #fff; } .reset { background: #333; color: #fff; }
         .preview { background: #111; color: yellow; padding: 12px; font-size: 10px; word-break: break-all; margin-top: 10px; border: 1px dashed #0f0; min-height: 50px; }
     </style>
 </head>
@@ -97,6 +70,13 @@ DASH_HTML = """
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         var marker = L.marker([{{status.lat}}, {{status.lon}}]).addTo(map);
 
+        // Auto-fetch IMEI from Data_Records
+        document.getElementById('vno').addEventListener('blur', function() {
+            fetch('/check_vehicle?vno=' + this.value)
+            .then(r => r.json())
+            .then(d => { if(d.imei) document.getElementById('imei').value = d.imei; });
+        });
+
         setInterval(() => {
             fetch('/data').then(r => r.json()).then(d => {
                 document.getElementById('cnt').innerText = d.count;
@@ -113,6 +93,7 @@ DASH_HTML = """
 </html>
 """
 
+# --- DATABASE ENGINE ---
 def log_to_firebase(uid, s):
     try:
         now = get_ist_time()
@@ -131,7 +112,7 @@ def firing_engine(sid):
             lat_f = "{:.7f}".format(float(s['lat']))
             lon_f = "{:.7f}".format(float(s['lon']))
             dt = now.strftime("%d%m%Y,%H%M%S")
-            # POINT 3: \r \n INCLUDED
+            # POINT 3 PROTECTION: \r \n INCLUDED EXACTLY
             pkt = f"$PVT,{tag},2.1.1,NR,01,L,{s['imei']},{s['vno']},1,{dt},{lat_f},N,{lon_f},E,{NEW_SUFFIX},{FIXED_CS}*"
             payload = pkt + " \r \n "
             user_sessions[sid]["last_pkt"] = pkt
@@ -141,6 +122,13 @@ def firing_engine(sid):
             sock.close()
             time.sleep(0.05)
         except: time.sleep(1)
+
+# --- ROUTES ---
+@app.route('/check_vehicle')
+def check_vehicle():
+    vno = request.args.get('vno', '').upper()
+    res = requests.get(f"{FB_URL}/Data_Records/{vno}.json?auth={FB_SECRET}").json()
+    return jsonify({"imei": res.get('IMEI_No') if res else ""})
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -153,7 +141,7 @@ def login():
             session['device_sid'] = sid
             user_sessions[sid] = {"uid": uid, "firing": False, "count": 0, "imei": "", "vno": "", "lat": "25.6489270", "lon": "84.7841180", "last_pkt": "Ready...", "session_id": ""}
             return redirect(url_for('dashboard'))
-    return render_template_string(LOGIN_HTML)
+    return render_template_string("LOGIN_HTML_CODE") # Apni login screen yahan paste kar lena
 
 @app.route('/dashboard')
 def dashboard():
