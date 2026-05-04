@@ -10,7 +10,6 @@ DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
 total_sent = 0
-logs = []
 TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
 @app.get("/fetch_data")
@@ -59,7 +58,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 NEW UI WITH MAP & PROGRESS BAR ---
+# --- 🎨 FINAL UI (RESET BUTTON INCLUDED) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -68,16 +67,17 @@ async def home():
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; height:100vh; overflow:hidden; }
         .box { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.9); border-radius:15px; box-shadow: 0 0 20px #0f0; z-index:10; margin-top:20px; }
-        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:10px; margin-top:8px; outline:none; text-transform:uppercase; }
-        button { width:100%; padding:12px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
-        .btn-loc { background:#003300; border-color:#0f0; font-size:10px; padding:5px; }
-        #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:8px; outline:none; text-transform:uppercase; font-size:14px; }
+        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; }
+        .btn-loc { background:#003300; border-color:#0f0; font-size:11px; padding:8px; }
+        .btn-reset { color:#ffff00; border-color:#ffff00; font-size:11px; padding:8px; margin-top:10px; }
+        #map { width:100%; height:230px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
         .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; overflow:hidden; display:none; border:1px solid #0f0; }
         #progress-bar { width:0%; height:100%; background:linear-gradient(90deg, #0f0, #00ff00); box-shadow: 0 0 10px #0f0; transition: width 0.3s; }
-        .stats { display:flex; justify-content:space-between; margin-top:10px; font-weight:bold; font-size:14px; }
+        .stats { display:flex; justify-content:space-between; margin-top:12px; font-weight:bold; font-size:15px; border-top: 1px solid #222; padding-top:10px; }
     </style></head><body>
     <div class="box">
-        <h2 style="text-align:center;margin:0;letter-spacing:4px;">NITRO V82 PRO</h2>
+        <h2 style="text-align:center;margin:0;letter-spacing:4px;color:#fff;">NITRO V82 PRO</h2>
         <input type="text" id="v" onblur="fetchData()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
         <div style="display:flex;gap:5px;">
@@ -87,9 +87,9 @@ async def home():
         <button class="btn-loc" onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;">START ATTACK</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
+        <button class="btn-reset" onclick="location.reload()">[ RESET SYSTEM ]</button>
         
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
-        
         <div id="map"></div>
         
         <div class="stats">
@@ -107,8 +107,8 @@ async def home():
         let mon;
         function updateMap(lt, ln) {
             let lat = parseFloat(lt); let lon = parseFloat(ln);
-            if(lat && lon) {
-                map.setView([lat, lon], 13);
+            if(!isNaN(lat) && !isNaN(lon)) {
+                map.setView([lat, lon], 14);
                 marker.setLatLng([lat, lon]);
             }
         }
@@ -149,7 +149,7 @@ async def home():
             if(!mon) mon = setInterval(() => {
                 fetch('/status').then(r=>r.json()).then(d=>{
                     document.getElementById('c').innerText = d.c;
-                    let prog = (d.c % 100); // Progress bar loop animation
+                    let prog = (d.c % 100);
                     document.getElementById('progress-bar').style.width = prog + "%";
                 });
             }, 1000);
