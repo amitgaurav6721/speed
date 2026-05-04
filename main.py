@@ -19,7 +19,7 @@ firing = False
 total_sent = 0
 logs = []
 TARGET_IP, TARGET_PORT = "vlts.bihar.gov.in", 9999
-TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA"]
+TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
 def format_coord(val):
     p = str(val).split('.')
