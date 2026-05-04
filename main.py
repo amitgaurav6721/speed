@@ -10,6 +10,8 @@ from firebase_admin import credentials, db
 app = FastAPI()
 
 # --- FIREBASE SETUP ---
+# Project: ghop-ghop-gps-injection
+# Key file: serviceAccountKey.json
 try:
     cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, {'databaseURL': 'https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com/'})
@@ -97,37 +99,80 @@ def stop():
 def status(): 
     return {"c": total_sent, "l": logs}
 
-# --- GUI WITH AUTO-FETCH LOGIC ---
+# --- GUI WITH AUTO-FETCH & RESET LOGIC (CLEAN) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>NITRO V82 PRO</title><style>
-    body { background:#000; color:#0f0; font-family:monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
-    .box { width:420px; border:2px solid #0f0; padding:25px; box-shadow:0 0 20px #0f0; border-radius:10px; background:rgba(0,10,0,0.9); }
-    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:10px; margin:5px 0; outline:none; }
-    button { width:100%; padding:12px; margin-top:10px; background:transparent; color:#0f0; border:1px solid #0f0; cursor:pointer; font-weight:bold; }
-    button:hover { background:#0f0; color:#000; }
-    #log { height:150px; background:#001100; border:1px dotted #0f0; margin-top:15px; padding:10px; font-size:12px; overflow:hidden; }
-    .notif { font-size:10px; color:#aaa; margin-top:5px; }
+    <html><head><title>NITRO V82 PRO | CLEAN INTERFACE</title><style>
+    body { background:#000; color:#0f0; font-family:'Courier New', monospace; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+    .box { width:420px; border:1px solid #0f0; padding:25px; box-shadow:0 0 25px rgba(0, 255, 0, 0.4); background:rgba(0,10,0,0.95); border-radius:15px; }
+    h2 { text-align:center; letter-spacing:5px; margin-bottom:20px; border-bottom:1px solid #0f0; padding-bottom:15px; text-shadow:0 0 10px #0f0; }
+    
+    .input-group { margin-bottom: 12px; }
+    label { font-size:12px; color:#0f0; text-transform:uppercase; margin-bottom:3px; display:block; text-shadow:0 0 5px #0f0; }
+    
+    input { width:100%; background:#000; border:1px solid #0f0; color:#0f0; padding:12px; outline:none; font-size:14px; box-sizing:border-box; }
+    input:focus { border-color: #0f0; box-shadow: 0 0 10px rgba(0, 255, 0, 0.5); }
+    
+    .btn-row { display:flex; gap:10px; margin-top:20px; }
+    button { flex:1; padding:15px; font-weight:bold; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; text-transform:uppercase; transition:0.3s; }
+    button:hover { background:#0f0; color:#000; box-shadow:0 0 15px #0f0; }
+    
+    #log { height:180px; background:#001100; border:1px dotted #030; margin-top:20px; padding:12px; font-size:12px; overflow:hidden; color:#00ff41; font-family:monospace; }
+    
+    .notif { font-size:10px; color:#aaa; margin-top:5px; min-height:14px; }
+    .stats-bar { display:flex; justify-content:space-between; margin-top:15px; font-weight:bold; font-size:14px; color:#fff; }
+    
+    .blink { animation: blinker 1s linear infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
+    
+    /* Emergency Reset Styling */
+    .reset-btn { border-color: #ffcc00 !important; color: #ffcc00 !important; font-size:11px; padding:8px; width:45%; margin: 10px auto; display:block; }
+    .reset-btn:hover { background:#ffcc00 !important; color:#000 !important; box-shadow:0 0 15px #ffcc00 !important; }
     </style></head><body>
     <div class="box">
         <h2>NITRO V82 TURBO</h2>
-        <input type="text" id="v" placeholder="VEHICLE NO" onblur="checkVehicle()" value="UP51T8261">
-        <div id="v_status" class="notif">ENTER VNO TO FETCH DATA...</div>
-        <input type="text" id="i" placeholder="IMEI NO" value="358980101447242">
-        <div style="display:flex; gap:10px;">
-            <input type="text" id="lt" placeholder="LAT" value="25.6501550">
-            <input type="text" id="ln" placeholder="LON" value="84.7851780">
+        
+        <div class="input-group">
+            <label>> VEHICLE_ID (REG NO)</label>
+            <input type="text" id="v" placeholder="e.g. BR01X1234" onblur="checkVehicle()">
+            <div id="v_status" class="notif">ENTER VNO TO FETCH DATA...</div>
         </div>
-        <button onclick="st()">START TURBO SEQUENTIAL</button>
-        <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT</button>
-        <div id="log">SYSTEM READY</div>
-        <div style="margin-top:10px;">SENT: <b id="c">0</b></div>
+        
+        <div class="input-group">
+            <label>> IMEI_SERIAL (15 DIGITS)</label>
+            <input type="text" id="i" placeholder="e.g. 35898010XXXXXXX">
+        </div>
+        
+        <div style="display:flex; gap:10px;" class="input-group">
+            <div style="flex: 1;">
+                <label>> LATITUDE</label>
+                <input type="text" id="lt" placeholder="e.g. 25.6123456">
+            </div>
+            <div style="flex: 1;">
+                <label>> LONGITUDE</label>
+                <input type="text" id="ln" placeholder="e.g. 84.7123456">
+            </div>
+        </div>
+        
+        <div class="btn-row">
+            <button onclick="st()">INITIATE TURBO ATTACK</button>
+            <button onclick="sp()" style="color:#f00; border-color:#f00;">ABORT ATTACK</button>
+        </div>
+        
+        <button onclick="resetSystem()" class="reset-btn">[SYSTEM RESET / CLEAR]</button>
+        
+        <div id="log">SYSTEM STATUS: READY_TO_INJECT...</div>
+        
+        <div class="stats-bar">
+            <span>PACKETS: <span id="c">0</span></span>
+            <span id="st" style="color:#0f0">IDLE</span>
+        </div>
     </div>
     <script>
         let itv;
         function checkVehicle() {
-            let vno = document.getElementById('v').value;
+            let vno = document.getElementById('v').value.trim();
             if(vno.length > 4) {
                 fetch(`/fetch_vehicle?vno=${vno}`)
                 .then(r => r.json())
@@ -138,6 +183,7 @@ async def home():
                         document.getElementById('ln').value = data.lon;
                         document.getElementById('v_status').innerText = "RECORD FOUND! DATA LOADED.";
                         document.getElementById('v_status').style.color = "#0f0";
+                        document.getElementById('v_status').style.textShadow = "0 0 5px #0f0";
                     } else {
                         document.getElementById('v_status').innerText = "NEW VEHICLE. ENTER DETAILS.";
                         document.getElementById('v_status').style.color = "#aaa";
@@ -146,11 +192,45 @@ async def home():
             }
         }
         function st() {
-            fetch(`/init?v=${document.getElementById('v').value}&i=${document.getElementById('i').value}&lt=${document.getElementById('lt').value}&ln=${document.getElementById('ln').value}`);
+            fetch(`/init?v=${document.getElementById('v').value.trim()}&i=${document.getElementById('i').value.trim()}&lt=${document.getElementById('lt').value.trim()}&ln=${document.getElementById('ln').value.trim()}`);
+            document.getElementById('st').innerText = "RUNNING";
+            document.getElementById('st').style.color = "#fff";
+            document.getElementById('st').className = "blink";
             if(!itv) itv = setInterval(() => {
-                fetch('/status').then(r=>r.json()).then(d=>{ document.getElementById('c').innerText = d.c; document.getElementById('log').innerHTML = d.l.join("<br>"); });
+                fetch('/status').then(r=>r.json()).then(d=>{ 
+                    document.getElementById('c').innerText = d.c; 
+                    document.getElementById('log').innerHTML = d.l.join("<br>"); 
+                });
             }, 1000);
         }
-        function sp() { fetch('/stop'); clearInterval(itv); itv=null; }
+        function sp() { 
+            fetch('/stop'); 
+            document.getElementById('st').innerText = "STOPPED"; 
+            document.getElementById('st').style.color = "#f00";
+            document.getElementById('st').className = ""; 
+            clearInterval(itv); itv=null; 
+        }
+        
+        // System Reset Function
+        function resetSystem() {
+            // Clear inputs
+            document.getElementById('v').value = "";
+            document.getElementById('i').value = "";
+            document.getElementById('lt').value = "";
+            document.getElementById('ln').value = "";
+            
+            // Clear statuses
+            document.getElementById('v_status').innerText = "ENTER VNO TO FETCH DATA...";
+            document.getElementById('v_status').style.color = "#aaa";
+            document.getElementById('v_status').style.textShadow = "none";
+            document.getElementById('c').innerText = "0";
+            document.getElementById('log').innerHTML = "SYSTEM RESET COMPLETE. READY FOR NEW ENTRY.";
+            
+            // Stop polling if active
+            if(itv) { clearInterval(itv); itv=null; }
+            document.getElementById('st').innerText = "IDLE";
+            document.getElementById('st').style.color = "#0f0";
+            document.getElementById('st').className = "";
+        }
     </script></body></html>
     """
