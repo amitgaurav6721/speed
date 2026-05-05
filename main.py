@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 🚀 REST API LOGIC (NO CHANGES) ---
+# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES) ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
@@ -58,7 +58,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL UI (TERRAIN MAP + BLUE ADMIN + LOGOUT) ---
+# --- 🎨 OPTIMIZED UI (FULL MAP FIX) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -71,7 +71,7 @@ async def home():
         input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:14px; }
         button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
         .user-wall { background:#001a00; border:1px solid #0f0; padding:12px; margin-top:10px; font-size:13px; display:none; color:#fff; border-radius:5px; }
-        #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
+        #map { width:100%; height:280px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background: #111; }
         .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; display:none; border:1px solid #0f0; }
         #progress-bar { width:0%; height:100%; background:#0f0; box-shadow: 0 0 10px #0f0; }
         .nav { width:420px; display:flex; justify-content:space-between; font-size:13px; margin-top:20px; color:#fff; }
@@ -124,11 +124,20 @@ async def home():
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
-        // Fast Terrain Map
-        let map = L.map('map').setView([20.59, 78.96], 5);
-        L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png').addTo(map);
-        let marker = L.marker([20.59, 78.96]).addTo(map);
-        let curUser = null;
+        let map, marker, curUser = null;
+
+        // Initialize Map Function
+        function initMap() {
+            if (map) return;
+            map = L.map('map').setView([20.59, 78.96], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: 'OpenStreetMap'
+            }).addTo(map);
+            marker = L.marker([20.59, 78.96]).addTo(map);
+            // Fix for half-loaded map
+            setTimeout(() => { map.invalidateSize(); }, 400);
+        }
 
         window.onload = () => {
             let saved = localStorage.getItem('nitro_user');
@@ -152,6 +161,9 @@ async def home():
             document.getElementById('dashScreen').style.display = 'block';
             document.getElementById('dashNav').style.display = 'flex';
             document.getElementById('u_name').innerText = curUser.mobile;
+            
+            initMap(); // Map load here
+
             let mRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json`);
             let mData = await mRes.json();
             if(mData && mData.text) {
@@ -181,7 +193,11 @@ async def home():
 
         function updateMap(lt, ln) {
             let lat = parseFloat(lt), lon = parseFloat(ln);
-            if(lat && lon) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); }
+            if(lat && lon && map) { 
+                map.setView([lat, lon], 14); 
+                marker.setLatLng([lat, lon]);
+                map.invalidateSize(); // Force redraw on update
+            }
         }
 
         function getLocation() {
