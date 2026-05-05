@@ -58,7 +58,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL MASTER UI (AUDIT BOX + RED MSG + LOGGING) ---
+# --- 🎨 FINAL MASTER UI (BROADCAST + AUDIT + RED MSG) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -66,7 +66,7 @@ async def home():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
-        .login-box, .dashboard { width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:30px; }
+        .login-box, .dashboard { width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:30px; transition: filter 0.3s; }
         .dashboard { display:none; margin-top:15px; }
         input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:14px; }
         button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
@@ -82,8 +82,20 @@ async def home():
         .nav { width:440px; display:flex; justify-content:space-between; font-size:13px; margin-top:15px; color:#fff; }
         .chk-group { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:12px; }
         .chk-group input { width:auto; margin:0; }
-        .admin-link { color:#007bff; text-decoration:none; font-weight:bold; font-size:16px; display:block; margin-top:10px; }
+        /* Broadcast Popup Overlay */
+        #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center; }
+        .popup { width:350px; border:2px solid #ff0; padding:25px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; }
+        .popup h3 { color:#ff0; margin-top:0; letter-spacing:2px; }
+        .popup button { background:#ff0; color:#000; border:none; margin-top:20px; width:100%; }
     </style></head><body>
+
+    <div id="overlay">
+        <div class="popup">
+            <h3>📢 SYSTEM ALERT</h3>
+            <p id="bc_text">Loading broadcast...</p>
+            <button onclick="closeBC()">UNDERSTOOD</button>
+        </div>
+    </div>
 
     <div class="login-box" id="loginScreen">
         <h1 style="text-align:center;letter-spacing:5px;">Ghop-Ghop GPS</h1>
@@ -93,7 +105,7 @@ async def home():
         <button onclick="login()" style="background:#0f0;color:#000;">ACCESS SYSTEM</button>
         <div style="text-align:center; margin-top:20px;">
             Don't have access? <br>
-            <a href="https://wa.me/917464010787?text=Sir,I%20need%20Nitro%20V82%20Access" class="admin-link">[ CONTACT ADMIN ]</a>
+            <a href="https://wa.me/917464010787?text=Sir,I%20need%20Nitro%20V82%20Access" style="color:#007bff;text-decoration:none;font-weight:bold;font-size:16px;">[ CONTACT ADMIN ]</a>
         </div>
     </div>
 
@@ -136,6 +148,7 @@ async def home():
     <script>
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
         let map, marker, curUser = null;
+        let currentBCID = "";
 
         function initMap() {
             if (map) return;
@@ -169,7 +182,20 @@ async def home():
             document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
 
-            // Fetch Audit Stats
+            // 1. Check Broadcast Message
+            fetch(`${DB}/app_config/broadcast.json`).then(r=>r.json()).then(bc => {
+                if(bc && bc.text) {
+                    currentBCID = bc.id;
+                    let lastSeenID = localStorage.getItem('last_bc_id');
+                    if(lastSeenID !== currentBCID) {
+                        document.getElementById('bc_text').innerText = bc.text;
+                        document.getElementById('overlay').style.display = 'flex';
+                        document.getElementById('dashScreen').style.filter = 'blur(5px)';
+                    }
+                }
+            });
+
+            // 2. Fetch Audit Stats
             let today = new Date().toISOString().split('T')[0];
             fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad=>{
                 if(ad){
@@ -180,7 +206,7 @@ async def home():
                 }
             });
 
-            // Fetch User Wall Message
+            // 3. Fetch User Wall Message
             let mRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json`);
             let mData = await mRes.json();
             if(mData && mData.text) {
@@ -188,6 +214,12 @@ async def home():
                 wall.innerHTML = `● <b>ADMIN UPDATE:</b><br><span class="wall-msg">${mData.text}</span>`;
                 wall.style.display = 'block';
             }
+        }
+
+        function closeBC() {
+            localStorage.setItem('last_bc_id', currentBCID);
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('dashScreen').style.filter = 'none';
         }
 
         function smartFetch() {
