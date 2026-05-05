@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES) ---
+# --- 🚀 REST API LOGIC (STRICT AUDIT LOCK) ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
@@ -30,11 +30,16 @@ def init(v:str, i:str, lt:str, ln:str):
         v_up = v.upper().strip()
         firing, total_sent = True, 0
         
-        # --- 🚀 ACCURATE DATA RECORDS UPDATE ---
-        now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        # --- 🚀 ACCURATE DATA RECORDS (AUDIT READY) ---
+        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {
-            "IMEI_No": i, "Lat": lt, "Lon": ln, "Status": "Active",
-            "Vehicle_No": v_up, "Last_Update": now.strftime('%H:%M:%S')
+            "Vehicle_No": v_up,
+            "IMEI_No": i,
+            "Lat": lt,
+            "Lon": ln,
+            "Status": "Active",
+            "Last_Start": now_ist.strftime('%Y-%m-%d %H:%M:%S'),
+            "Node": "V82-PRO-CORE"
         }
         try: requests.put(f"{DB_URL}/Data_Records/{v_up}.json", json=payload)
         except: pass
@@ -65,7 +70,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 PRESTIGE UI (AUDIT READY + BROADCAST) ---
+# --- 🎨 FINAL MASTER UI (FIXED LOGGING + AUDIT + BROADCAST) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -91,19 +96,26 @@ async def home():
         .chk-group input { width:auto; margin:0; }
         #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center; }
         .popup { width:350px; border:2px solid #ff0; padding:25px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; }
+        .popup h3 { color:#ff0; margin-top:0; letter-spacing:2px; }
         .popup button { background:#ff0; color:#000; border:none; margin-top:20px; width:100%; font-weight:bold; }
     </style></head><body>
 
-    <div id="overlay"><div class="popup"><h3>📢 SYSTEM ALERT</h3><p id="bc_text"></p><button onclick="closeBC()">UNDERSTOOD</button></div></div>
+    <div id="overlay">
+        <div class="popup">
+            <h3>📢 SYSTEM ALERT</h3>
+            <p id="bc_text">Loading broadcast...</p>
+            <button onclick="closeBC()">UNDERSTOOD</button>
+        </div>
+    </div>
 
     <div class="login-box" id="loginScreen">
-        <h1 style="text-align:center;letter-spacing:5px;">GHOP-GHOP GPS</h1>
+        <h1 style="text-align:center;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem"> <label>Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;">ACCESS SYSTEM</button>
         <div style="text-align:center; margin-top:20px;">
-            <a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;">[ CONTACT ADMIN ]</a>
+            <a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;font-size:16px;">[ CONTACT ADMIN ]</a>
         </div>
     </div>
 
@@ -114,7 +126,10 @@ async def home():
     
     <div class="dashboard" id="dashScreen">
         <div class="audit-box" id="audit_box">
-            <div>OK<b id="a_ok">0</b></div><div>FAIL<b id="a_fail">0</b></div><div>ERROR<b id="a_err">0</b></div><div>TOTAL<b id="a_total">0</b></div>
+            <div>OK<b id="a_ok">0</b></div>
+            <div>FAIL<b id="a_fail">0</b></div>
+            <div>ERROR<b id="a_err">0</b></div>
+            <div>TOTAL<b id="a_total">0</b></div>
         </div>
         <div class="user-wall" id="u_wall"></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
@@ -127,7 +142,8 @@ async def home():
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
         <div id="map"></div>
         <div style="display:flex;justify-content:space-between;margin-top:15px;">
-            <span>SENT: <b id="c">0</b></span><span id="st" style="color:lime">IDLE</span>
+            <span>SENT: <b id="c">0</b></span>
+            <span id="st" style="color:lime">IDLE</span>
         </div>
     </div>
 
@@ -243,30 +259,35 @@ async def home():
             }, 1000);
         }
 
-        // --- 🚀 ACCURATE AUDIT LOGGING (STOP LOGIC) ---
+        // --- 🚀 FIX: FULL ACCURATE HISTORY LOGGING ---
         async function sp() {
             fetch('/stop');
-            clearInterval(mon); mon=null;
+            clearInterval(mon); mon = null;
             let total = document.getElementById('c').innerText;
+            
             if(parseInt(total) > 0){
                 let istTime = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
                 let dateKey = istTime.toISOString().split('T')[0];
+                let timeStr = istTime.toTimeString().split(' ')[0];
                 
                 let fullRecord = {
-                    Vehicle_No: document.getElementById('v').value.toUpperCase(),
-                    IMEI_No: document.getElementById('i').value,
-                    Lat: document.getElementById('lt').value,
-                    Lon: document.getElementById('ln').value,
+                    Vehicle_No: document.getElementById('v').value.toUpperCase().trim(),
+                    IMEI_No: document.getElementById('i').value.trim(),
+                    Lat: document.getElementById('lt').value.trim(),
+                    Lon: document.getElementById('ln').value.trim(),
                     total_sent: total,
-                    time: istTime.toTimeString().split(' ')[0],
-                    Status: "Completed"
+                    time: timeStr,
+                    Status: "Completed",
+                    Source: "NITRO-V82-PRO"
                 };
                 
                 fetch(`${DB}/Attack_History/${dateKey}/${curUser.mobile}.json`, {
-                    method: 'POST', body: JSON.stringify(fullRecord)
+                    method: 'POST',
+                    body: JSON.stringify(fullRecord)
                 });
             }
-            document.getElementById('st').innerText="IDLE"; document.getElementById('p-cont').style.display="none";
+            document.getElementById('st').innerText="IDLE"; 
+            document.getElementById('p-cont').style.display="none";
         }
     </script></body></html>
     """
