@@ -10,7 +10,7 @@ DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
 total_sent = 0
-TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AIS140", "VLTD", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
+TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
 @app.get("/fetch_data")
 def fetch_data(vno: str):
@@ -62,7 +62,7 @@ def stop(): global firing; firing = False; return {"ok": True}
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>NITRO V82 PRO | PRESTIGE</title>
+    <html><head><title>Ghop-Ghop GPS</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
@@ -86,7 +86,7 @@ async def home():
     </style></head><body>
 
     <div class="login-box" id="loginScreen">
-        <h2 style="text-align:center;letter-spacing:5px;">NITRO LOGIN</h2>
+        <h1 style="text-align:center;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem"> <label>Remember Me</label></div>
