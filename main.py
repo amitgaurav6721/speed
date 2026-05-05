@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES) ---
+# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES IN CORE) ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
@@ -58,109 +58,157 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL UI (RESET BUTTON INCLUDED) ---
+# --- 🎨 SMART UI (LOGIN + MESSAGE TABLE + SMART LOCATION) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>NITRO V82 PRO | MASTER</title>
+    <html><head><title>NITRO V82 PRO | PRESTIGE</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; height:100vh; overflow:hidden; }
-        .box { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.9); border-radius:15px; box-shadow: 0 0 20px #0f0; z-index:10; margin-top:20px; }
-        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:8px; outline:none; text-transform:uppercase; font-size:14px; }
-        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; }
-        .btn-loc { background:#003300; border-color:#0f0; font-size:11px; padding:8px; }
-        .btn-reset { color:#ffff00; border-color:#ffff00; font-size:11px; padding:8px; margin-top:10px; }
-        #map { width:100%; height:230px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
-        .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; overflow:hidden; display:none; border:1px solid #0f0; }
-        #progress-bar { width:0%; height:100%; background:linear-gradient(90deg, #0f0, #00ff00); box-shadow: 0 0 10px #0f0; transition: width 0.3s; }
-        .stats { display:flex; justify-content:space-between; margin-top:12px; font-weight:bold; font-size:15px; border-top: 1px solid #222; padding-top:10px; }
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
+        .login-box, .dashboard { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:50px; }
+        .dashboard { display:none; margin-top:20px; }
+        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; }
+        button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
+        .user-wall { background:#001a00; border:1px dashed #0f0; padding:10px; margin-top:10px; font-size:12px; display:none; color:#fff; }
+        #map { width:100%; height:200px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg); }
+        .progress-container { width:100%; height:8px; background:#111; margin-top:10px; border-radius:4px; display:none; border:1px solid #0f0; }
+        #progress-bar { width:0%; height:100%; background:#0f0; box-shadow: 0 0 10px #0f0; }
+        .nav { width:420px; display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; color:#fff; }
+        .chk-group { display:flex; align-items:center; gap:10px; margin-top:10px; font-size:12px; }
+        .chk-group input { width:auto; margin:0; }
     </style></head><body>
-    <div class="box">
-        <h2 style="text-align:center;margin:0;letter-spacing:4px;color:#fff;">NITRO V82 PRO</h2>
-        <input type="text" id="v" onblur="fetchData()" placeholder="VEHICLE NUMBER">
+
+    <div class="login-box" id="loginScreen">
+        <h2 style="text-align:center;letter-spacing:5px;">NITRO LOGIN</h2>
+        <input type="text" id="m_num" placeholder="MOBILE NUMBER">
+        <input type="password" id="m_pass" placeholder="PASSWORD">
+        <div class="chk-group"><input type="checkbox" id="rem"> <label>Remember Me</label></div>
+        <button onclick="login()" style="background:#0f0;color:#000;">ACCESS SYSTEM</button>
+        <p style="font-size:11px;text-align:center;margin-top:20px;">
+            Don't have access? <a href="https://wa.me/917464010787?text=Sir,I%20need%20Nitro%20V82%20Access" style="color:#0f0;text-decoration:none;font-weight:bold;">[ CONTACT ADMIN ]</a>
+        </p>
+    </div>
+
+    <div class="nav" id="dashNav" style="display:none; margin-top:20px;">
+        <span>USER: <b id="u_name" style="color:#0f0">...</b></span>
+        <span onclick="logout()" style="cursor:pointer;color:red;">[ LOGOUT ]</span>
+    </div>
+    
+    <div class="dashboard" id="dashScreen">
+        <div class="user-wall" id="u_wall"></div>
+        <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
+        <div class="chk-group">
+            <input type="checkbox" id="useDef" checked> 
+            <label>Use My Default Location (DB)</label>
+        </div>
         <div style="display:flex;gap:5px;">
             <input type="text" id="lt" placeholder="LAT">
             <input type="text" id="ln" placeholder="LON">
         </div>
-        <button class="btn-loc" onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
-        <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;">START ATTACK</button>
+        <button onclick="getLocation()" style="font-size:10px;padding:5px;">[ GET CURRENT LOCATION ]</button>
+        <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
-        <button class="btn-reset" onclick="location.reload()">[ RESET SYSTEM ]</button>
+        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:10px;">RESET</button>
         
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
         <div id="map"></div>
-        
-        <div class="stats">
-            <span>SENT: <b id="c" style="color:#fff">0</b></span>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;">
+            <span>SENT: <b id="c">0</b></span>
             <span id="st" style="color:lime">IDLE</span>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let map = L.map('map').setView([20.5937, 78.9629], 5);
+        const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
+        let map = L.map('map').setView([20.59, 78.96], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        let marker = L.marker([20.5937, 78.9629]).addTo(map);
+        let marker = L.marker([20.59, 78.96]).addTo(map);
+        let curUser = null;
 
-        let mon;
-        function updateMap(lt, ln) {
-            let lat = parseFloat(lt); let lon = parseFloat(ln);
-            if(!isNaN(lat) && !isNaN(lon)) {
-                map.setView([lat, lon], 14);
-                marker.setLatLng([lat, lon]);
+        // Auto Login Check
+        window.onload = () => {
+            let saved = localStorage.getItem('nitro_user');
+            if(saved) { curUser = JSON.parse(saved); showDash(); }
+        }
+
+        async function login() {
+            let num = document.getElementById('m_num').value.trim();
+            let pass = document.getElementById('m_pass').value.trim();
+            let res = await fetch(`${DB}/users/${num}.json`);
+            let data = await res.json();
+            if(data && data.password == pass) {
+                curUser = { ...data, mobile: num };
+                if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser));
+                showDash();
+            } else { alert("INVALID ACCESS DETAILS"); }
+        }
+
+        async function showDash() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('dashScreen').style.display = 'block';
+            document.getElementById('dashNav').style.display = 'flex';
+            document.getElementById('u_name').innerText = curUser.mobile;
+            
+            // Fetch User Message from new Table
+            let mRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json`);
+            let mData = await mRes.json();
+            if(mData && mData.text) {
+                let wall = document.getElementById('u_wall');
+                wall.innerHTML = `<b>ADMIN MESSAGE:</b><br>${mData.text}`;
+                wall.style.display = 'block';
             }
+        }
+
+        function smartFetch() {
+            let v = document.getElementById('v').value.toUpperCase().trim();
+            if(v.length < 5) return;
+            
+            fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
+                if(d.found) {
+                    document.getElementById('i').value = d.imei;
+                    // Logic: Checkbox decides location source
+                    if(document.getElementById('useDef').checked) {
+                        document.getElementById('lt').value = curUser.lat;
+                        document.getElementById('ln').value = curUser.lon;
+                    } else {
+                        document.getElementById('lt').value = d.lat;
+                        document.getElementById('ln').value = d.lon;
+                    }
+                    updateMap(document.getElementById('lt').value, document.getElementById('ln').value);
+                }
+            });
+        }
+
+        function updateMap(lt, ln) {
+            let lat = parseFloat(lt), lon = parseFloat(ln);
+            if(lat && lon) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); }
         }
 
         function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
-                    document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
-                    updateMap(pos.coords.latitude, pos.coords.longitude);
-                });
-            }
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
+                document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
+                updateMap(pos.coords.latitude, pos.coords.longitude);
+            });
         }
 
-        function fetchData() {
-            let v = document.getElementById('v').value.trim();
-            if(v.length > 4) {
-                fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
-                    if(d.found) {
-                        document.getElementById('i').value=d.imei;
-                        document.getElementById('lt').value=d.lat;
-                        document.getElementById('ln').value=d.lon;
-                        updateMap(d.lat, d.lon);
-                    }
-                });
-            }
-        }
+        function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
 
+        let mon;
         function st() {
-            let v = document.getElementById('v').value;
-            let i = document.getElementById('i').value;
-            let lt = document.getElementById('lt').value;
-            let ln = document.getElementById('ln').value;
+            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value;
             fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}`);
-            document.getElementById('st').innerText="FIRING";
-            document.getElementById('st').style.color="red";
-            document.getElementById('p-cont').style.display="block";
+            document.getElementById('st').innerText="FIRING"; document.getElementById('p-cont').style.display="block";
             if(!mon) mon = setInterval(() => {
                 fetch('/status').then(r=>r.json()).then(d=>{
                     document.getElementById('c').innerText = d.c;
-                    let prog = (d.c % 100);
-                    document.getElementById('progress-bar').style.width = prog + "%";
+                    document.getElementById('progress-bar').style.width = (d.c % 100) + "%";
                 });
             }, 1000);
         }
-
-        function sp() {
-            fetch('/stop');
-            clearInterval(mon); mon=null;
-            document.getElementById('st').innerText="IDLE";
-            document.getElementById('st').style.color="lime";
-            document.getElementById('p-cont').style.display="none";
-        }
+        function sp() { fetch('/stop'); clearInterval(mon); mon=null; document.getElementById('st').innerText="IDLE"; }
     </script></body></html>
     """
