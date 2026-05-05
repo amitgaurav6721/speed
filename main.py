@@ -140,7 +140,7 @@ async def home():
         <input type="text" id="i" placeholder="IMEI">
         <div class="chk-group"><input type="checkbox" id="useDef" checked> <label>Use Default Location (Profile)</label></div>
         <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-        <button onclick="getLocation()" style="font-size:11px;padding:8px;">[ GET CURRENT LOCATION ]</button>
+        <button id="getLocBtn" onclick="getLocation()" style="font-size:11px;padding:8px;">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0; color:#000; font-size:16px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
         <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
@@ -241,14 +241,25 @@ async def home():
             if(lat && lon && map) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); map.invalidateSize(); }
         }
 
+        // --- 🚀 ACCURATE GEOLOCATION FIX ---
         function getLocation() {
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
-                    document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
-                    updateMap(pos.coords.latitude, pos.coords.longitude);
-                });
-            } else { alert("Geolocation is not supported by this browser."); }
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude.toFixed(6);
+                        const lon = position.coords.longitude.toFixed(6);
+                        document.getElementById('lt').value = lat;
+                        document.getElementById('ln').value = lon;
+                        updateMap(lat, lon);
+                    },
+                    (error) => {
+                        alert("Location Error: Please allow location access in your browser settings.");
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            } else { 
+                alert("Browser Error: Your browser doesn't support location services."); 
+            }
         }
 
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
