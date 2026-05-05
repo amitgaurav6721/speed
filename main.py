@@ -58,7 +58,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 OPTIMIZED UI (FULL MAP FIX) ---
+# --- 🎨 FINAL MASTER UI (AUDIT BOX + RED MSG + LOGGING) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -66,15 +66,20 @@ async def home():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
-        .login-box, .dashboard { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:50px; }
-        .dashboard { display:none; margin-top:20px; }
+        .login-box, .dashboard { width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:30px; }
+        .dashboard { display:none; margin-top:15px; }
         input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:14px; }
         button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
+        .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:11px; color:#fff; text-align:center; }
+        .audit-box div { flex:1; border-right:1px solid #030; }
+        .audit-box div:last-child { border-right:none; }
+        .audit-box b { display:block; color:#0f0; font-size:14px; }
         .user-wall { background:#001a00; border:1px solid #0f0; padding:12px; margin-top:10px; font-size:13px; display:none; color:#fff; border-radius:5px; }
-        #map { width:100%; height:280px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background: #111; }
+        .wall-msg { color:red; font-weight:bold; }
+        #map { width:100%; height:260px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background: #111; }
         .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; display:none; border:1px solid #0f0; }
         #progress-bar { width:0%; height:100%; background:#0f0; box-shadow: 0 0 10px #0f0; }
-        .nav { width:420px; display:flex; justify-content:space-between; font-size:13px; margin-top:20px; color:#fff; }
+        .nav { width:440px; display:flex; justify-content:space-between; font-size:13px; margin-top:15px; color:#fff; }
         .chk-group { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:12px; }
         .chk-group input { width:auto; margin:0; }
         .admin-link { color:#007bff; text-decoration:none; font-weight:bold; font-size:16px; display:block; margin-top:10px; }
@@ -98,12 +103,18 @@ async def home():
     </div>
     
     <div class="dashboard" id="dashScreen">
+        <div class="audit-box" id="audit_box">
+            <div>OK<b id="a_ok">0</b></div>
+            <div>FAIL<b id="a_fail">0</b></div>
+            <div>ERROR<b id="a_err">0</b></div>
+            <div>TOTAL<b id="a_total">0</b></div>
+        </div>
         <div class="user-wall" id="u_wall"></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
         <div class="chk-group">
             <input type="checkbox" id="useDef" checked> 
-            <label>Use Default Location (From Profile)</label>
+            <label>Use Default Location (Profile)</label>
         </div>
         <div style="display:flex;gap:5px;">
             <input type="text" id="lt" placeholder="LAT">
@@ -126,16 +137,11 @@ async def home():
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
         let map, marker, curUser = null;
 
-        // Initialize Map Function
         function initMap() {
             if (map) return;
             map = L.map('map').setView([20.59, 78.96], 5);
-            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: 'OpenStreetMap'
-            }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
             marker = L.marker([20.59, 78.96]).addTo(map);
-            // Fix for half-loaded map
             setTimeout(() => { map.invalidateSize(); }, 400);
         }
 
@@ -161,14 +167,25 @@ async def home():
             document.getElementById('dashScreen').style.display = 'block';
             document.getElementById('dashNav').style.display = 'flex';
             document.getElementById('u_name').innerText = curUser.mobile;
-            
-            initMap(); // Map load here
+            initMap();
 
+            // Fetch Audit Stats
+            let today = new Date().toISOString().split('T')[0];
+            fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad=>{
+                if(ad){
+                    document.getElementById('a_ok').innerText = ad.ok || 0;
+                    document.getElementById('a_fail').innerText = ad.fail || 0;
+                    document.getElementById('a_err').innerText = ad.error || 0;
+                    document.getElementById('a_total').innerText = ad.total || 0;
+                }
+            });
+
+            // Fetch User Wall Message
             let mRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json`);
             let mData = await mRes.json();
             if(mData && mData.text) {
                 let wall = document.getElementById('u_wall');
-                wall.innerHTML = `● <b>ADMIN UPDATE:</b><br>${mData.text}`;
+                wall.innerHTML = `● <b>ADMIN UPDATE:</b><br><span class="wall-msg">${mData.text}</span>`;
                 wall.style.display = 'block';
             }
         }
@@ -179,13 +196,8 @@ async def home():
             fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
                 if(d.found) {
                     document.getElementById('i').value = d.imei;
-                    if(document.getElementById('useDef').checked) {
-                        document.getElementById('lt').value = curUser.lat;
-                        document.getElementById('ln').value = curUser.lon;
-                    } else {
-                        document.getElementById('lt').value = d.lat;
-                        document.getElementById('ln').value = d.lon;
-                    }
+                    document.getElementById('lt').value = document.getElementById('useDef').checked ? curUser.lat : d.lat;
+                    document.getElementById('ln').value = document.getElementById('useDef').checked ? curUser.lon : d.lon;
                     updateMap(document.getElementById('lt').value, document.getElementById('ln').value);
                 }
             });
@@ -193,11 +205,7 @@ async def home():
 
         function updateMap(lt, ln) {
             let lat = parseFloat(lt), lon = parseFloat(ln);
-            if(lat && lon && map) { 
-                map.setView([lat, lon], 14); 
-                marker.setLatLng([lat, lon]);
-                map.invalidateSize(); // Force redraw on update
-            }
+            if(lat && lon && map) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); map.invalidateSize(); }
         }
 
         function getLocation() {
@@ -222,6 +230,17 @@ async def home():
                 });
             }, 1000);
         }
-        function sp() { fetch('/stop'); clearInterval(mon); mon=null; document.getElementById('st').innerText="IDLE"; }
+
+        async function sp() {
+            fetch('/stop');
+            clearInterval(mon); mon=null;
+            let total = document.getElementById('c').innerText;
+            if(parseInt(total) > 0){
+                let dateKey = new Date().toISOString().split('T')[0];
+                let log = { vehicle: document.getElementById('v').value, total_sent: total, time: new Date().toLocaleTimeString() };
+                fetch(`${DB}/Attack_History/${dateKey}/${curUser.mobile}.json`, {method:'POST', body: JSON.stringify(log)});
+            }
+            document.getElementById('st').innerText="IDLE"; document.getElementById('p-cont').style.display="none";
+        }
     </script></body></html>
     """
