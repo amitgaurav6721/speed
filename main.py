@@ -139,6 +139,7 @@ async def home():
         <button onclick="getLocation()" style="font-size:11px;padding:8px;">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0; color:#000; font-size:16px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
+        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
         <div id="map"></div>
         <div style="display:flex;justify-content:space-between;margin-top:15px;">
@@ -282,7 +283,7 @@ async def home():
                     Source: "NITRO-V82-PRO"
                 };
                 
-                // 🛑 Fixed: Used PUT with Vehicle_No as key instead of POST
+                // 🛑 Fixed: Used PUT with Vehicle_No as key to avoid random IDs
                 fetch(`${DB}/Attack_History/${dateKey}/${curUser.mobile}/${v_no}.json`, {
                     method: 'PUT',
                     body: JSON.stringify(fullRecord)
