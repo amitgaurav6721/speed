@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES IN CORE) ---
+# --- 🚀 REST API LOGIC (LOCKED - NO CHANGES) ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 
 firing = False
@@ -58,7 +58,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 SMART UI (LOGIN + MESSAGE TABLE + SMART LOCATION) ---
+# --- 🎨 OPTIMIZED UI (LIGHT MAP + BLUE ADMIN + USER WALL) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -67,32 +67,35 @@ async def home():
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
         .login-box, .dashboard { width:420px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:50px; }
-        .dashboard { display:none; margin-top:20px; }
-        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; }
-        button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
-        .user-wall { background:#001a00; border:1px dashed #0f0; padding:10px; margin-top:10px; font-size:12px; display:none; color:#fff; }
-        #map { width:100%; height:200px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg); }
-        .progress-container { width:100%; height:8px; background:#111; margin-top:10px; border-radius:4px; display:none; border:1px solid #0f0; }
+        .dashboard { display:none; margin-top:20px; border-color:#0f0; }
+        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:14px; }
+        button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; }
+        .user-wall { background:#001a00; border:1px solid #0f0; padding:12px; margin-top:10px; font-size:13px; display:none; color:#fff; border-radius:5px; box-shadow: inset 0 0 5px #0f0; }
+        #map { width:100%; height:220px; margin-top:15px; border:1px solid #0f0; border-radius:10px; filter: invert(100%) hue-rotate(180deg); }
+        .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; display:none; border:1px solid #0f0; }
         #progress-bar { width:0%; height:100%; background:#0f0; box-shadow: 0 0 10px #0f0; }
-        .nav { width:420px; display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px; color:#fff; }
-        .chk-group { display:flex; align-items:center; gap:10px; margin-top:10px; font-size:12px; }
+        .nav { width:420px; display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px; color:#fff; }
+        .chk-group { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:12px; }
         .chk-group input { width:auto; margin:0; }
+        .admin-link { color:#007bff; text-decoration:none; font-weight:bold; font-size:14px; display:block; margin-top:10px; }
+        .admin-link:hover { text-decoration:underline; }
     </style></head><body>
 
     <div class="login-box" id="loginScreen">
-        <h2 style="text-align:center;letter-spacing:5px;">NITRO LOGIN</h2>
+        <h2 style="text-align:center;letter-spacing:5px;color:#fff;">NITRO LOGIN</h2>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem"> <label>Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;">ACCESS SYSTEM</button>
-        <p style="font-size:11px;text-align:center;margin-top:20px;">
-            Don't have access? <a href="https://wa.me/917464010787?text=Sir,I%20need%20Nitro%20V82%20Access" style="color:#0f0;text-decoration:none;font-weight:bold;">[ CONTACT ADMIN ]</a>
-        </p>
+        <div style="text-align:center; margin-top:20px; font-size:12px;">
+            Don't have access? 
+            <a href="https://wa.me/917464010787?text=Sir,I%20need%20Nitro%20V82%20Access" class="admin-link">[ CONTACT ADMIN ]</a>
+        </div>
     </div>
 
     <div class="nav" id="dashNav" style="display:none; margin-top:20px;">
-        <span>USER: <b id="u_name" style="color:#0f0">...</b></span>
-        <span onclick="logout()" style="cursor:pointer;color:red;">[ LOGOUT ]</span>
+        <span>USER ID: <b id="u_name" style="color:#0f0">...</b></span>
+        <span onclick="logout()" style="cursor:pointer;color:red;font-weight:bold;">[ LOGOUT ]</span>
     </div>
     
     <div class="dashboard" id="dashScreen">
@@ -101,34 +104,35 @@ async def home():
         <input type="text" id="i" placeholder="IMEI">
         <div class="chk-group">
             <input type="checkbox" id="useDef" checked> 
-            <label>Use My Default Location (DB)</label>
+            <label>Use Default Location (From Your Profile)</label>
         </div>
         <div style="display:flex;gap:5px;">
             <input type="text" id="lt" placeholder="LAT">
             <input type="text" id="ln" placeholder="LON">
         </div>
-        <button onclick="getLocation()" style="font-size:10px;padding:5px;">[ GET CURRENT LOCATION ]</button>
-        <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;">START INJECTION</button>
-        <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
-        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:10px;">RESET</button>
+        <button onclick="getLocation()" style="font-size:11px;padding:8px;border-style:dashed;">[ GET CURRENT LOCATION ]</button>
+        <button onclick="st()" id="startBtn" style="background:#0f0; color:#000;font-size:16px;">START INJECTION</button>
+        <button onclick="sp()" style="color:red;border-color:red;">ABORT ATTACK</button>
+        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
         
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
         <div id="map"></div>
-        <div style="display:flex;justify-content:space-between;margin-top:10px;">
-            <span>SENT: <b id="c">0</b></span>
-            <span id="st" style="color:lime">IDLE</span>
+        
+        <div style="display:flex;justify-content:space-between;margin-top:15px;font-weight:bold;">
+            <span>SENT: <b id="c" style="color:#fff">0</b></span>
+            <span id="st" style="color:lime">SYSTEM_IDLE</span>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
-        let map = L.map('map').setView([20.59, 78.96], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        // Light-weight Map Initialisation
+        let map = L.map('map', { zoomControl: false }).setView([20.59, 78.96], 5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
         let marker = L.marker([20.59, 78.96]).addTo(map);
         let curUser = null;
 
-        // Auto Login Check
         window.onload = () => {
             let saved = localStorage.getItem('nitro_user');
             if(saved) { curUser = JSON.parse(saved); showDash(); }
@@ -137,13 +141,14 @@ async def home():
         async function login() {
             let num = document.getElementById('m_num').value.trim();
             let pass = document.getElementById('m_pass').value.trim();
+            if(!num || !pass) return alert("FIELDS REQUIRED");
             let res = await fetch(`${DB}/users/${num}.json`);
             let data = await res.json();
             if(data && data.password == pass) {
                 curUser = { ...data, mobile: num };
                 if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser));
                 showDash();
-            } else { alert("INVALID ACCESS DETAILS"); }
+            } else { alert("ACCESS DENIED: WRONG PASSWORD"); }
         }
 
         async function showDash() {
@@ -152,12 +157,12 @@ async def home():
             document.getElementById('dashNav').style.display = 'flex';
             document.getElementById('u_name').innerText = curUser.mobile;
             
-            // Fetch User Message from new Table
+            // Check Personalized Message Table
             let mRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json`);
             let mData = await mRes.json();
             if(mData && mData.text) {
                 let wall = document.getElementById('u_wall');
-                wall.innerHTML = `<b>ADMIN MESSAGE:</b><br>${mData.text}`;
+                wall.innerHTML = `<span style="color:#0f0">●</span> <b>ADMIN UPDATE:</b><br>${mData.text}`;
                 wall.style.display = 'block';
             }
         }
@@ -165,11 +170,9 @@ async def home():
         function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
             if(v.length < 5) return;
-            
             fetch(`/fetch_data?vno=${v}`).then(r=>r.json()).then(d=>{
                 if(d.found) {
                     document.getElementById('i').value = d.imei;
-                    // Logic: Checkbox decides location source
                     if(document.getElementById('useDef').checked) {
                         document.getElementById('lt').value = curUser.lat;
                         document.getElementById('ln').value = curUser.lon;
@@ -188,11 +191,13 @@ async def home():
         }
 
         function getLocation() {
-            navigator.geolocation.getCurrentPosition(pos => {
-                document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
-                document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
-                updateMap(pos.coords.latitude, pos.coords.longitude);
-            });
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    document.getElementById('lt').value = pos.coords.latitude.toFixed(6);
+                    document.getElementById('ln').value = pos.coords.longitude.toFixed(6);
+                    updateMap(pos.coords.latitude, pos.coords.longitude);
+                });
+            }
         }
 
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
@@ -200,6 +205,7 @@ async def home():
         let mon;
         function st() {
             let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value;
+            if(!v || !i || !lt || !ln) return alert("MISSING DATA");
             fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}`);
             document.getElementById('st').innerText="FIRING"; document.getElementById('p-cont').style.display="block";
             if(!mon) mon = setInterval(() => {
@@ -209,6 +215,6 @@ async def home():
                 });
             }, 1000);
         }
-        function sp() { fetch('/stop'); clearInterval(mon); mon=null; document.getElementById('st').innerText="IDLE"; }
+        function sp() { fetch('/stop'); clearInterval(mon); mon=null; document.getElementById('st').innerText="IDLE"; document.getElementById('p-cont').style.display="none"; }
     </script></body></html>
     """
