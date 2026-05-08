@@ -23,19 +23,15 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         engine.total_sent = 0
         stop_event.clear()
         
-        # 🔥 FIX: Adding Background Task to sync DB before/during firing
+        # 🔥 FIX: Syncing DB with Last Attack Details
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {
-            "Vehicle_No": v_up, 
-            "IMEI_No": i, 
-            "Lat": lt, 
-            "Lon": ln, 
-            "Status": "Active", 
-            "Last_Attack": now.strftime('%Y-%m-%d %H:%M:%S')
+            "Vehicle_No": v_up, "IMEI_No": i, "Lat": lt, "Lon": ln, 
+            "Status": "Active", "Last_Attack": now.strftime('%Y-%m-%d %H:%M:%S')
         }
         background_tasks.add_task(sync_to_firebase, v_up, payload)
         
-        # 🔥 Firing Logic (Nitro Style)
+        # 🔥 Nitro Firing Logic
         target_tags = TAGS if t_up == "ALL" else [t_up]
         for tag in target_tags:
             threading.Thread(target=engine.handshake_worker, args=(tag, i, v_up, lt, ln), daemon=True).start()
@@ -46,9 +42,7 @@ def status():
     return {"c": engine.total_sent, "f": not stop_event.is_set()}
 
 @app.get("/stop")
-def stop(): 
-    stop_event.set()
-    return {"ok": True}
+def stop(): stop_event.set(); return {"ok": True}
 
 @app.get("/fetch_data")
 async def fetch_api(vno: str):
@@ -72,7 +66,6 @@ async def home():
         .online { background-color: #0f0; box-shadow: 0 0 8px #0f0; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
         .chk-group { display: flex; align-items: center; gap: 10px; margin-top: 15px; margin-bottom: 5px; color: #fff; font-size: 13px; }
-        .chk-group input { width: 18px; height: 18px; cursor: pointer; margin: 0; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:10px; text-align:center; }
         .audit-box b { display:block; color:#0f0; font-size:14px; }
@@ -90,7 +83,7 @@ async def home():
         <h1 style="text-align:center;font-size:24px;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
-        <div class="chk-group" style="justify-content: center; padding:10px;"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
+        <div class="chk-group" style="justify-content: center; padding:10px;"><input type="checkbox" id="rem" checked> <label>Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
     </div>
 
@@ -145,6 +138,7 @@ async def home():
         async function showDash() {
             document.getElementById('loginScreen').style.display='none'; document.getElementById('dashScreen').style.display='block'; document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
+            // Audit Fetch from DB
             let today = new Date().toISOString().split('T')[0];
             fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad => {
                 if(ad) { document.getElementById('a_ok').innerText = ad.ok || 0; document.getElementById('a_fail').innerText = ad.fail || 0; document.getElementById('a_total').innerText = ad.total || 0; }
@@ -190,6 +184,7 @@ async def home():
             let d = await res.json(); 
             if(d.found){ 
                 document.getElementById('i').value = d.imei; 
+                // Priority: Use Profile Default if Checked, else use Last Location from Data_Records
                 let lat = document.getElementById('useDef').checked ? (curUser.lat || d.lat) : d.lat;
                 let lon = document.getElementById('useDef').checked ? (curUser.lon || d.lon) : d.lon;
                 document.getElementById('lt').value = lat; document.getElementById('ln').value = lon; 
@@ -197,10 +192,7 @@ async def home():
             } 
         }
 
-        function st() { 
-            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; 
-            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); 
-        }
+        function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); }
         function sp() { fetch('/stop'); document.getElementById('st_text').innerText = 'IDLE'; document.getElementById('st_text').style.color = 'lime'; }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
     </script></body></html>
