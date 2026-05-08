@@ -143,7 +143,7 @@ async def home():
         <button id="getLocBtn" onclick="getLocation()" style="font-size:11px;padding:8px;">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0; color:#000; font-size:16px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
-        <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
+        <button onclick="resetInputs()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
         <div class="progress-container" id="p-cont"><div id="progress-bar"></div></div>
         <div id="map"></div>
         <div style="display:flex;justify-content:space-between;margin-top:15px;">
@@ -241,7 +241,6 @@ async def home():
             if(lat && lon && map) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); map.invalidateSize(); }
         }
 
-        // --- 🚀 ACCURATE GEOLOCATION FIX ---
         function getLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -260,6 +259,20 @@ async def home():
             } else { 
                 alert("Browser Error: Your browser doesn't support location services."); 
             }
+        }
+
+        // --- 🚀 RESET WITHOUT LOGOUT ---
+        function resetInputs() {
+            document.getElementById('v').value = '';
+            document.getElementById('i').value = '';
+            document.getElementById('lt').value = '';
+            document.getElementById('ln').value = '';
+            document.getElementById('c').innerText = '0';
+            document.getElementById('st').innerText = 'IDLE';
+            document.getElementById('p-cont').style.display = 'none';
+            document.getElementById('progress-bar').style.width = '0%';
+            updateMap(20.59, 78.96);
+            map.setView([20.59, 78.96], 5);
         }
 
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
