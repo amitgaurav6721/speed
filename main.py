@@ -23,6 +23,19 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         engine.total_sent = 0
         stop_event.clear()
         
+        # 🔥 FIX: Adding Background Task to sync DB before/during firing
+        now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        payload = {
+            "Vehicle_No": v_up, 
+            "IMEI_No": i, 
+            "Lat": lt, 
+            "Lon": ln, 
+            "Status": "Active", 
+            "Last_Attack": now.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        background_tasks.add_task(sync_to_firebase, v_up, payload)
+        
+        # 🔥 Firing Logic (Nitro Style)
         target_tags = TAGS if t_up == "ALL" else [t_up]
         for tag in target_tags:
             threading.Thread(target=engine.handshake_worker, args=(tag, i, v_up, lt, ln), daemon=True).start()
@@ -33,7 +46,9 @@ def status():
     return {"c": engine.total_sent, "f": not stop_event.is_set()}
 
 @app.get("/stop")
-def stop(): stop_event.set(); return {"ok": True}
+def stop(): 
+    stop_event.set()
+    return {"ok": True}
 
 @app.get("/fetch_data")
 async def fetch_api(vno: str):
@@ -77,7 +92,6 @@ async def home():
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group" style="justify-content: center; padding:10px;"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
-        <div style="text-align:center; margin-top:20px;"><a href="https://wa.me/917464010787" style="color:#0f0;text-decoration:none;">[ CONTACT ADMIN ]</a></div>
     </div>
 
     <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
@@ -183,7 +197,10 @@ async def home():
             } 
         }
 
-        function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); }
+        function st() { 
+            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; 
+            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); 
+        }
         function sp() { fetch('/stop'); document.getElementById('st_text').innerText = 'IDLE'; document.getElementById('st_text').style.color = 'lime'; }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
     </script></body></html>
