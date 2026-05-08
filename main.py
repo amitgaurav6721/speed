@@ -74,18 +74,20 @@ def status(): return {"c": total_sent, "f": firing}
 @app.get("/stop")
 def stop(): global firing; firing = False; return {"ok": True}
 
-# --- 🎨 FINAL MASTER UI ---
+# --- 🎨 FINAL MASTER UI (MOBILE OPTIMIZED) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
-    <html><head><title>Ghop-Ghop GPS</title>
+    <html><head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghop-Ghop GPS</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
-        .login-box, .dashboard { width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:30px; transition: filter 0.3s; }
+        .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:30px; box-sizing: border-box; }
         .dashboard { display:none; margin-top:15px; }
-        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:14px; }
-        button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; }
+        input { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; box-sizing: border-box; }
+        button { width:100%; padding:14px; margin-top:15px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:11px; color:#fff; text-align:center; }
         .audit-box div { flex:1; border-right:1px solid #030; }
         .audit-box div:last-child { border-right:none; }
@@ -95,11 +97,11 @@ async def home():
         #map { width:100%; height:260px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background: #111; }
         .progress-container { width:100%; height:10px; background:#111; margin-top:15px; border-radius:5px; display:none; border:1px solid #0f0; }
         #progress-bar { width:0%; height:100%; background:#0f0; box-shadow: 0 0 10px #0f0; }
-        .nav { width:440px; display:flex; justify-content:space-between; font-size:13px; margin-top:15px; color:#fff; }
+        .nav { width:95%; max-width:440px; display:flex; justify-content:space-between; font-size:13px; margin-top:15px; color:#fff; box-sizing: border-box; }
         .chk-group { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:12px; }
         .chk-group input { width:auto; margin:0; }
         #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center; }
-        .popup { width:350px; border:2px solid #ff0; padding:25px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; }
+        .popup { width:90%; max-width:350px; border:2px solid #ff0; padding:25px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; box-sizing: border-box; }
         .popup h3 { color:#ff0; margin-top:0; letter-spacing:2px; }
         .popup button { background:#ff0; color:#000; border:none; margin-top:20px; width:100%; font-weight:bold; }
     </style></head><body>
@@ -261,7 +263,6 @@ async def home():
             }
         }
 
-        // --- 🚀 RESET WITHOUT LOGOUT ---
         function resetInputs() {
             document.getElementById('v').value = '';
             document.getElementById('i').value = '';
