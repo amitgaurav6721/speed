@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-# 🔗 Connections
+# 🔗 Essential Connections
 from database import fetch_vehicle_data, sync_to_firebase
 from engine import GpsEngine
 
@@ -23,7 +23,6 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         engine.total_sent = 0
         stop_event.clear()
         
-        # Smart Overwrite Check: sync_to_firebase will handle the location update logic
         target_tags = TAGS if t_up == "ALL" else [t_up]
         for tag in target_tags:
             threading.Thread(target=engine.handshake_worker, args=(tag, i, v_up, lt, ln), daemon=True).start()
@@ -34,13 +33,10 @@ def status():
     return {"c": engine.total_sent, "f": not stop_event.is_set()}
 
 @app.get("/stop")
-def stop(): 
-    stop_event.set()
-    return {"ok": True}
+def stop(): stop_event.set(); return {"ok": True}
 
 @app.get("/fetch_data")
 async def fetch_api(vno: str):
-    # 🔥 DB Fetch Fix: Getting last attack location from Data_Records
     data = await fetch_vehicle_data(vno)
     if data:
         return {"found": True, "imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')}
@@ -60,7 +56,7 @@ async def home():
         .dot { height: 8px; width: 8px; background-color: #333; border-radius: 50%; display: inline-block; margin-right: 4px; }
         .online { background-color: #0f0; box-shadow: 0 0 8px #0f0; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        .chk-group { display: flex; align-items: center; gap: 10px; margin-top: 15px; color: #fff; font-size: 13px; }
+        .chk-group { display: flex; align-items: center; gap: 10px; margin-top: 15px; margin-bottom: 5px; color: #fff; font-size: 13px; }
         .chk-group input { width: 18px; height: 18px; cursor: pointer; margin: 0; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:10px; text-align:center; }
@@ -98,7 +94,9 @@ async def home():
             <option value="ASPL">ASPL</option><option value="LOCT14A">LOCT14A</option><option value="GRL">GRL</option>
         </select>
         <div class="chk-group"><input type="checkbox" id="useDef"> <label for="useDef">Use Profile Default Location</label></div>
-        <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+        <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+        
+        <button onclick="getLocation()" style="font-size:11px;border-style:dashed;margin-top:5px;">[[ GET CURRENT LOCATION ]]</button>
         
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
@@ -131,7 +129,7 @@ async def home():
         async function showDash() {
             document.getElementById('loginScreen').style.display='none'; document.getElementById('dashScreen').style.display='block'; document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
-            // 🔥 User Audit Fetch (Attack History)
+            // 🔥 Audit Fetch from DB
             let today = new Date().toISOString().split('T')[0];
             fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad => {
                 if(ad) { document.getElementById('a_ok').innerText = ad.ok || 0; document.getElementById('a_fail').innerText = ad.fail || 0; document.getElementById('a_total').innerText = ad.total || 0; }
@@ -146,7 +144,15 @@ async def home():
 
         function closeBC() { localStorage.setItem('last_bc_id', currentBCID); document.getElementById('overlay').style.display = 'none'; }
 
-        // 🔥 Hard Fix: Reset System Logic
+        function getLocation() {
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('lt').value = pos.coords.latitude.toFixed(7);
+                document.getElementById('ln').value = pos.coords.longitude.toFixed(7);
+                map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+                marker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
+            }, (e)=>alert(e.message), {enableHighAccuracy:true});
+        }
+
         function resetSystem() {
             document.getElementById('v').value = ''; document.getElementById('i').value = ''; 
             document.getElementById('lt').value = ''; document.getElementById('ln').value = '';
@@ -162,7 +168,6 @@ async def home():
             else { document.getElementById('e_dot').classList.remove('online'); }
         }); }, 1000);
 
-        // 🔥 Hard Fix: smartFetch with Last Attack Location Logic
         async function smartFetch() { 
             let v = document.getElementById('v').value.toUpperCase().trim(); 
             if(!v) return; 
@@ -170,7 +175,6 @@ async def home():
             let d = await res.json(); 
             if(d.found){ 
                 document.getElementById('i').value = d.imei; 
-                // Priority: If checkbox checked, use Profile Default. Else, use Last Location from Data_Records.
                 let lat = document.getElementById('useDef').checked ? (curUser.lat || d.lat) : d.lat;
                 let lon = document.getElementById('useDef').checked ? (curUser.lon || d.lon) : d.lon;
                 document.getElementById('lt').value = lat; document.getElementById('ln').value = lon; 
