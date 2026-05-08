@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-# 🔗 Essential Connections
+# 🔗 Connections
 from database import fetch_vehicle_data, sync_to_firebase
 from engine import GpsEngine
 
@@ -91,7 +91,9 @@ async def home():
         <select id="tagSel">
             <option value="ALL">ALL TAGS (MULTI-STREAM)</option>
             <option value="RA18">RA18</option><option value="WTEX">WTEX</option><option value="MARK">MARK</option>
-            <option value="ASPL">ASPL</option><option value="LOCT14A">LOCT14A</option><option value="GRL">GRL</option>
+            <option value="ASPL">ASPL</option><option value="LOCT14A">LOCT14A</option><option value="ACT1">ACT1</option>
+            <option value="AMAZON">AMAZON</option><option value="BBOX77">BBOX77</option><option value="EGAS">EGAS</option>
+            <option value="MENT">MENT</option><option value="MIJO">MIJO</option><option value="ROADRPA">ROADRPA</option><option value="GRL">GRL</option>
         </select>
         <div class="chk-group"><input type="checkbox" id="useDef"> <label for="useDef">Use Profile Default Location</label></div>
         <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
@@ -129,7 +131,6 @@ async def home():
         async function showDash() {
             document.getElementById('loginScreen').style.display='none'; document.getElementById('dashScreen').style.display='block'; document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
-            // 🔥 Audit Fetch from DB
             let today = new Date().toISOString().split('T')[0];
             fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad => {
                 if(ad) { document.getElementById('a_ok').innerText = ad.ok || 0; document.getElementById('a_fail').innerText = ad.fail || 0; document.getElementById('a_total').innerText = ad.total || 0; }
