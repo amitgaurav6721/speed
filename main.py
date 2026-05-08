@@ -59,15 +59,13 @@ async def home():
     <title>Ghop-Ghop GPS</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        * { box-sizing: border-box; }
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
-        .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:20px; }
+        .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:20px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:20px; box-sizing: border-box; }
         .conn-box { display: flex; justify-content: space-around; background: #111; padding: 8px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #333; font-size: 10px; }
         .dot { height: 8px; width: 8px; background-color: #333; border-radius: 50%; display: inline-block; margin-right: 4px; }
         .online { background-color: #0f0; box-shadow: 0 0 8px #0f0; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        .chk-group { display: flex; align-items: center; gap: 12px; margin-top: 15px; margin-bottom: 10px; color: #fff; font-size: 13px; cursor: pointer; }
-        .chk-group input { width: 18px; height: 18px; accent-color: #0f0; cursor: pointer; margin: 0; }
+        .chk-group { display: flex; align-items: center; gap: 10px; margin-top: 15px; color: #fff; font-size: 14px; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:10px; text-align:center; }
         .audit-box b { display:block; color:#0f0; font-size:14px; }
@@ -87,7 +85,7 @@ async def home():
         <h1 style="text-align:center;font-size:24px;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER">
         <input type="password" id="m_pass" placeholder="PASSWORD">
-        <div class="chk-group" style="justify-content: center;"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
+        <div class="chk-group" style="justify-content: center; padding:10px;"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
         <div style="text-align:center; margin-top:20px;"><a href="https://wa.me/917464010787" style="color:#0f0;text-decoration:none;">[ CONTACT ADMIN ]</a></div>
     </div>
@@ -107,9 +105,9 @@ async def home():
             <option value="AMAZON">AMAZON</option><option value="BBOX77">BBOX77</option><option value="EGAS">EGAS</option>
             <option value="MENT">MENT</option><option value="MIJO">MIJO</option><option value="ROADRPA">ROADRPA</option><option value="GRL">GRL</option>
         </select>
-        <div class="chk-group"><input type="checkbox" id="useDef"> <label for="useDef">Use Profile Default Location</label></div>
+        <div class="chk-group"><input type="checkbox" id="useDef" checked> <label>Use Default Location</label></div>
         <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-        <button onclick="getLocation()" style="font-size:11px;border-style:dashed;margin-top:5px;">[[ GET CURRENT LOCATION ]]</button>
+        <button onclick="getLocation()" style="font-size:11px;">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
         <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
@@ -162,7 +160,7 @@ async def home():
             let d = await res.json(); 
             if(d.found){ 
                 document.getElementById('i').value = d.imei; 
-                // 🔥 Default Location Logic
+                // 🔥 Default Location Hard Fix Logic
                 let lat = document.getElementById('useDef').checked ? (curUser.lat || d.lat) : d.lat;
                 let lon = document.getElementById('useDef').checked ? (curUser.lon || d.lon) : d.lon;
                 document.getElementById('lt').value = lat; 
