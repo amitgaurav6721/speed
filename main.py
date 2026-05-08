@@ -49,20 +49,15 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
     global total_sent
     if stop_event.is_set():
         v_up, t_up = v.upper().strip(), t.upper().strip()
-        
-        # 🎯 Backend 7-Decimal Fix
         try:
-            lt_fixed = "{:.7f}".format(float(lt))
-            ln_fixed = "{:.7f}".format(float(ln))
-        except:
-            lt_fixed, ln_fixed = lt, ln
-
+            lt_f = "{:.7f}".format(float(lt))
+            ln_f = "{:.7f}".format(float(ln))
+        except: lt_f, ln_f = lt, ln
         total_sent = 0
         stop_event.clear()
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt_fixed, "Lon": ln_fixed, "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
+        payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt_f, "Lon": ln_f, "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(sync_data, v_up, t_up, payload)
-        
         run_tags = list(DEFAULT_TAGS) if t_up == "ALL" else [t_up]
         if t_up == "ALL":
             try:
@@ -70,9 +65,8 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
                 extra = r.json()
                 if extra: run_tags.extend(extra.keys())
             except: pass
-
         for tag in list(set(run_tags)):
-            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt_fixed,ln_fixed), daemon=True).start()
+            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt_f,ln_f), daemon=True).start()
     return {"ok": True}
 
 async def sync_data(vno, tag, payload):
@@ -99,7 +93,12 @@ async def home():
         .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:20px; box-sizing: border-box; }
         .dashboard { display:none; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; box-sizing: border-box; border-radius:5px; }
-        .chk-group { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 15px; width: 100%; color: #fff; font-size: 14px; }
+        
+        /* 🛠️ ALIGNMENT FIX - NO CENTER GIMMICKS */
+        .chk-group { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin-top: 15px; width: 100%; color: #fff; font-size: 14px; padding-left: 2px; }
+        .chk-group input[type="checkbox"] { width: 22px !important; height: 22px !important; margin: 0 !important; cursor: pointer; flex-shrink: 0; appearance: auto; }
+        .chk-group label { cursor: pointer; white-space: nowrap; }
+
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; border-radius:5px; }
         .progress-container { width:100%; height:12px; background:#111; margin-top:15px; border-radius:6px; display:none; border:1px solid #0f0; overflow:hidden; }
         #progress-bar { width:0%; height:100%; background: linear-gradient(90deg, #0f0, #004400); box-shadow: 0 0 10px #0f0; }
@@ -196,10 +195,18 @@ async def home():
             let res = await fetch(`/fetch_data?vno=${v}`), d = await res.json();
             if(d.IMEI_No){
                 document.getElementById('i').value = d.IMEI_No;
-                let lat = document.getElementById('useDef').checked ? curUser.lat : (d.Lat || d.lat);
-                let lon = document.getElementById('useDef').checked ? curUser.Lon : (d.lon || d.Lon);
-                document.getElementById('lt').value = parseFloat(lat).toFixed(7);
-                document.getElementById('ln').value = parseFloat(lon).toFixed(7);
+                
+                // 🛑 FORCE CONVERT DB STRINGS TO NUMBERS (Fix for "Quotes" in DB)
+                let rawLat = document.getElementById('useDef').checked ? curUser.lat : (d.Lat || d.lat || "24.919211");
+                let rawLon = document.getElementById('useDef').checked ? curUser.lon : (d.Lon || d.lon || "83.790586");
+                
+                let lat = parseFloat(rawLat), lon = parseFloat(rawLon);
+                if(isNaN(lat)) lat = 24.9192110;
+                if(isNaN(lon)) lon = 83.7905860;
+
+                document.getElementById('lt').value = lat.toFixed(7);
+                document.getElementById('ln').value = lon.toFixed(7);
+                
                 if(d.Saved_Tag) { let sel = document.getElementById('tagSel'); if(!Array.from(sel.options).some(o => o.value == d.Saved_Tag)) await loadGlobalTags(); sel.value = d.Saved_Tag; }
                 updateMapManually();
             }
@@ -214,23 +221,9 @@ async def home():
         }
 
         function st() {
-            // 🛑 VALIDATION LOGIC
-            let v=document.getElementById('v').value.trim(), 
-                i=document.getElementById('i').value.trim(), 
-                lt=document.getElementById('lt').value.trim(), 
-                ln=document.getElementById('ln').value.trim(), 
-                tag = document.getElementById('tagSel').value;
-
-            if(!v || !i || !lt || !ln) {
-                alert("ALL BOXES (Vehicle, IMEI, Lat, Lon) MUST BE FILLED!");
-                return;
-            }
-
-            if(tag == "MANUAL") {
-                tag = document.getElementById('manTag').value.toUpperCase().trim();
-                if(!tag) { alert("PLEASE ENTER TAG NAME!"); return; }
-            }
-            
+            let v=document.getElementById('v').value.trim(), i=document.getElementById('i').value.trim(), lt=document.getElementById('lt').value.trim(), ln=document.getElementById('ln').value.trim(), tag = document.getElementById('tagSel').value;
+            if(!v || !i || !lt || !ln) return alert("FILL ALL BOXES!");
+            if(tag == "MANUAL") { tag = document.getElementById('manTag').value.toUpperCase().trim(); if(!tag) return alert("ENTER TAG NAME!"); }
             if(mon) clearInterval(mon);
             fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${tag}`);
             document.getElementById('st_text').innerText="FIRING"; document.getElementById('p-cont').style.display="block";
