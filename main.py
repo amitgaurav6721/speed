@@ -29,8 +29,14 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         payload = {"Vehicle_No": v_up, "IMEI_No": str(i), "Lat": f"{lt_f:.7f}", "Lon": f"{ln_f:.7f}", "Saved_Tag": t_up, "Status": "Active", "Time": now.strftime('%H:%M:%S')}
         background_tasks.add_task(sync_to_firebase, v_up, payload)
         
-        # Engine Start
-        threading.Thread(target=engine.handshake_worker, args=(t_up, i, v_up, lt_f, ln_f), daemon=True).start()
+        # 🔥 Multi-Stream Trigger Logic
+        if t_up == "ALL":
+            TAGS_LIST = ["RA18", "WTEX", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
+            for tag in TAGS_LIST:
+                threading.Thread(target=engine.handshake_worker, args=(tag, i, v_up, lt_f, ln_f), daemon=True).start()
+        else:
+            threading.Thread(target=engine.handshake_worker, args=(t_up, i, v_up, lt_f, ln_f), daemon=True).start()
+            
     return {"ok": True}
 
 @app.get("/status")
@@ -96,7 +102,6 @@ async def home():
         </div>
 
         <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-        
         <button onclick="getLocation()" style="font-size:12px;border-style:dashed;">[ GET CURRENT LOCATION ]</button>
         
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START INJECTION</button>
@@ -114,7 +119,6 @@ async def home():
         let map, marker, curUser = null, mon = null;
 
         function initMap() { if (map) return; map = L.map('map').setView([24.91, 83.79], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([24.91, 83.79]).addTo(map); }
-        
         async function login() {
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
             let res = await fetch(`${DB}/users/${n}.json`);
@@ -125,9 +129,7 @@ async def home():
                 showDash(); 
             } else alert("WRONG PASSWORD");
         }
-
         window.onload = () => { let s = localStorage.getItem('nitro_user'); if(s){ curUser = JSON.parse(s); showDash(); } }
-        
         function showDash() {
             document.getElementById('loginScreen').style.display='none';
             document.getElementById('dashScreen').style.display='block';
@@ -137,19 +139,15 @@ async def home():
             TAGS.forEach(t => { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); });
             initMap();
         }
-
         function chkMan() { document.getElementById('manTag').style.display = (document.getElementById('tagSel').value == "MANUAL") ? 'block' : 'none'; }
-        
         function getLocation() {
             if(!navigator.geolocation) return alert("Geolocation not supported");
             navigator.geolocation.getCurrentPosition(p=>{
                 document.getElementById('lt').value = p.coords.latitude.toFixed(7);
                 document.getElementById('ln').value = p.coords.longitude.toFixed(7);
-                map.setView([p.coords.latitude, p.coords.longitude], 15); 
-                marker.setLatLng([p.coords.latitude, p.coords.longitude]);
+                map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]);
             }, (e)=>alert("Error: "+e.message), {enableHighAccuracy:true});
         }
-
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
             if(!v) return;
@@ -164,7 +162,6 @@ async def home():
                 map.setView([lat, lon], 15); marker.setLatLng([lat, lon]);
             }
         }
-
         function st() {
             let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value;
             if(t=="MANUAL") t = document.getElementById('manTag').value;
@@ -179,7 +176,6 @@ async def home():
                 });
             }, 1000);
         }
-
         function sp() { fetch('/stop'); clearInterval(mon); document.getElementById('st_text').innerText="IDLE"; }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
     </script></body></html>
