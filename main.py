@@ -15,10 +15,9 @@ lock = threading.Lock()
 
 DEFAULT_TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
-# --- 🏎️ ENGINE (STRICT NUMBER FORMAT) ---
+# --- 🏎️ NEW ENGINE (STRONGER STRING FORMAT) ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global total_sent
-    # Ensure coordinates are clean numbers for the packet string
     try:
         lat_val = float(lat)
         lon_val = float(lon)
@@ -34,8 +33,11 @@ def handshake_worker(tag, imei, vno, lat, lon):
                     for _ in range(15):
                         if stop_event.is_set(): break
                         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-                        # 🔥 DATA PACKET (No extra quotes, strict formatting)
-                        pkt = f"$PVT,{tag},2.1.1,NR,01,L,{imei},{vno},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{lat_val:.7f},N,{lon_val:.7f},E,0.00,0.0,11,73,0.8,0.8,airtel,1,1,11.5,4.3,0,C,26,404,73,0a83,e3c8,e3c7,0a83,7,e3fb,0a83,7,c79d,0a83,10,e3f9,0a83,0,0001,00,000041,DDE3*\\r\\n"
+                        
+                        # 🔥 NEW STRING INTEGRATION (Dynamic Data Placed Correctly)
+                        # Format: $PVT,TAG,1.ONTC,NR,01,L,IMEI,VNO,1,DATE,TIME,LAT,N,LON,E,STATIC_STUFF*
+                        pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{lat_val:.6f},N,{lon_val:.6f},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*\\r\\n"
+                        
                         s.sendall(bytes(pkt, 'ascii'))
                         with lock: total_sent += 1
                         time.sleep(0.01)
@@ -47,7 +49,7 @@ async def fetch_data(vno: str):
     v_up = vno.upper().strip()
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.get(f"{DB_URL}/Data_Records/{v_up}.json?nocache={time.time()}")
+            r = await client.get(f"{DB_URL}/Data_Records/{v_up}.json?t={time.time()}")
             return r.json() or {"found": False}
         except: return {"found": False}
 
@@ -56,29 +58,14 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
     global total_sent
     if stop_event.is_set():
         v_up, t_up = v.upper().strip(), t.upper().strip()
-        
-        # 🎯 Force Float Conversion for Server
         try:
-            lt_num = float(lt)
-            ln_num = float(ln)
-        except: return {"ok": False, "error": "Invalid Coords"}
-
+            lt_f, ln_f = float(lt), float(ln)
+        except: return {"ok": False}
         total_sent = 0
         stop_event.clear()
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-        
-        # Save payload - Backend handles strict formatting
-        payload = {
-            "Vehicle_No": v_up, 
-            "IMEI_No": str(i), 
-            "Lat": f"{lt_num:.7f}", 
-            "Lon": f"{ln_num:.7f}", 
-            "Saved_Tag": t_up, 
-            "Status": "Active", 
-            "Time": now_ist.strftime('%H:%M:%S')
-        }
+        payload = {"Vehicle_No": v_up, "IMEI_No": str(i), "Lat": f"{lt_f:.7f}", "Lon": f"{ln_f:.7f}", "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(sync_data, v_up, t_up, payload)
-        
         run_tags = list(DEFAULT_TAGS) if t_up == "ALL" else [t_up]
         if t_up == "ALL":
             try:
@@ -86,9 +73,8 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
                 extra = r.json()
                 if extra: run_tags.extend(extra.keys())
             except: pass
-        
         for tag in list(set(run_tags)):
-            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt_num,ln_num), daemon=True).start()
+            threading.Thread(target=handshake_worker, args=(tag,i,v_up,lt_f,ln_f), daemon=True).start()
     return {"ok": True}
 
 async def sync_data(vno, tag, payload):
@@ -115,8 +101,9 @@ async def home():
         .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:20px; box-sizing: border-box; }
         .dashboard { display:none; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        .chk-group { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin-top: 15px; width: 100%; color: #fff; }
-        .chk-group input { width: 22px !important; height: 22px !important; margin: 0 !important; cursor: pointer; }
+        .chk-group { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 15px; width: 100%; color: #fff; padding-left: 5px; }
+        .chk-group input[type="checkbox"] { width: 22px !important; height: 22px !important; margin: 0 !important; cursor: pointer; flex-shrink: 0; appearance: auto; }
+        .chk-group label { cursor: pointer; white-space: nowrap; font-size: 14px; font-weight: bold; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         .progress-container { width:100%; height:12px; background:#111; margin-top:15px; border-radius:6px; display:none; border:1px solid #0f0; overflow:hidden; }
         #progress-bar { width:0%; height:100%; background: linear-gradient(90deg, #0f0, #004400); }
@@ -170,7 +157,6 @@ async def home():
             let lat = parseFloat(document.getElementById('lt').value), lon = parseFloat(document.getElementById('ln').value);
             if(!isNaN(lat) && !isNaN(lon)) { map.setView([lat, lon], 14); marker.setLatLng([lat, lon]); }
         }
-
         async function loadGlobalTags() {
             try {
                 let res = await fetch(`${DB}/Global_Tags.json?t=${Date.now()}`), data = await res.json() || {};
@@ -182,16 +168,13 @@ async def home():
                 if(cur) sel.value = cur;
             } catch(e) {}
         }
-
         async function login() {
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
             let res = await fetch(`${DB}/users/${n}.json`), data = await res.json();
             if(data && data.password == p) { curUser = { ...data, mobile: n }; if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser)); showDash(); }
             else alert("WRONG PASSWORD");
         }
-
         window.onload = () => { let s = localStorage.getItem('nitro_user'); if(s){ curUser = JSON.parse(s); showDash(); } }
-
         function showDash() {
             document.getElementById('loginScreen').style.display='none'; document.getElementById('dashScreen').style.display='block';
             document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText=curUser.mobile;
@@ -200,9 +183,7 @@ async def home():
                 if(m&&m.text){ let w=document.getElementById('u_wall'); w.innerHTML=`● <b>ADMIN UPDATE:</b><br><span>${m.text}</span>`; w.style.display='block'; }
             });
         }
-
         function checkManual() { document.getElementById('manTag').style.display = (document.getElementById('tagSel').value == "MANUAL") ? 'block' : 'none'; }
-
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
             if(!v) return;
@@ -210,14 +191,13 @@ async def home():
             if(d.IMEI_No){
                 document.getElementById('i').value = d.IMEI_No;
                 let lat = document.getElementById('useDef').checked ? curUser.lat : (d.Lat || d.lat || "24.919211");
-                let lon = document.getElementById('useDef').checked ? curUser.lon : (d.Lon || d.lon || "83.790586");
+                let lon = document.getElementById('useDef').checked ? curUser.Lon || d.lon : (d.Lon || d.lon || "83.790586");
                 document.getElementById('lt').value = parseFloat(lat).toFixed(7);
                 document.getElementById('ln').value = parseFloat(lon).toFixed(7);
                 if(d.Saved_Tag) { let sel = document.getElementById('tagSel'); if(!Array.from(sel.options).some(o => o.value == d.Saved_Tag)) await loadGlobalTags(); sel.value = d.Saved_Tag; }
                 updateMapManually();
             }
         }
-
         function getLocation() {
             navigator.geolocation.getCurrentPosition(p=>{
                 document.getElementById('lt').value = p.coords.latitude.toFixed(7);
@@ -225,7 +205,6 @@ async def home():
                 updateMapManually();
             }, null, {enableHighAccuracy:true});
         }
-
         function st() {
             let v=document.getElementById('v').value.trim(), i=document.getElementById('i').value.trim(), lt=document.getElementById('lt').value.trim(), ln=document.getElementById('ln').value.trim(), tag = document.getElementById('tagSel').value;
             if(!v || !i || !lt || !ln) return alert("FILL ALL BOXES!");
@@ -235,7 +214,6 @@ async def home():
             document.getElementById('st_text').innerText="FIRING"; document.getElementById('p-cont').style.display="block";
             mon = setInterval(()=>{ fetch('/status').then(r=>r.json()).then(d=>{ document.getElementById('c').innerText=d.c; document.getElementById('progress-bar').style.width = (d.c % 100) + "%"; }); }, 1000);
         }
-
         async function sp() { fetch('/stop'); if(mon) clearInterval(mon); mon = null; document.getElementById('st_text').innerText="IDLE"; document.getElementById('p-cont').style.display="none"; }
         function resetInputs() { location.reload(); }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
