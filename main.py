@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-# 🔗 Connecting all modules
+# 🔗 Importing modules
 from database import fetch_vehicle_data, sync_to_firebase, get_system_messages
 from engine import GpsEngine
 
@@ -67,7 +67,6 @@ async def home():
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
-        <p style="text-align:center;font-size:12px;margin-top:15px;color:#555;">CONTACT US FOR ACCESS</p>
     </div>
 
     <div class="nav" id="dashNav"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
@@ -96,6 +95,7 @@ async def home():
         let map, marker, curUser = null, mon = null;
 
         function initMap() { if (map) return; map = L.map('map').setView([24.91, 83.79], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([24.91, 83.79]).addTo(map); }
+        
         async function login() {
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
             let res = await fetch(`${DB}/users/${n}.json`);
@@ -106,21 +106,38 @@ async def home():
                 showDash(); 
             } else alert("WRONG PASSWORD");
         }
+
         window.onload = () => { let s = localStorage.getItem('nitro_user'); if(s){ curUser = JSON.parse(s); showDash(); } }
+        
         async function showDash() {
             document.getElementById('loginScreen').style.display='none';
             document.getElementById('dashScreen').style.display='block';
             document.getElementById('dashNav').style.display='flex';
             document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
+            
+            // 🔥 RESTORED MESSAGE WALL LOGIC
             let wall = document.getElementById('u_wall');
+            // Fetching Broadcast and Personal Messages from Firebase
             let bRes = await fetch(`${DB}/broadcast.json?t=${Date.now()}`);
             let bData = await bRes.json();
-            if(bData && bData.text) { wall.innerHTML = `● <b>ADMIN:</b> ${bData.text}`; wall.style.display = 'block'; }
+            let pRes = await fetch(`${DB}/user_messages/${curUser.mobile}.json?t=${Date.now()}`);
+            let pData = await pRes.json();
+
+            if(bData && bData.text) {
+                wall.innerHTML = `● <b>ADMIN UPDATE:</b><br><span>${bData.text}</span>`;
+                wall.style.display = 'block';
+            } else if(pData && pData.text) {
+                wall.innerHTML = `● <b>UPDATE:</b><br><span>${pData.text}</span>`;
+                wall.style.display = 'block';
+            }
+            
             let sel = document.getElementById('tagSel');
             DEFAULT_TAGS.forEach(t => { let o = document.createElement('option'); o.value = t; o.innerText = t; sel.appendChild(o); });
         }
+
         function checkManual() { document.getElementById('manTag').style.display = (document.getElementById('tagSel').value == "MANUAL") ? 'block' : 'none'; }
+        
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
             if(!v) return;
@@ -135,6 +152,7 @@ async def home():
                 map.setView([lat, lon], 14); marker.setLatLng([lat, lon]);
             }
         }
+
         function getLocation() {
             navigator.geolocation.getCurrentPosition(p=>{
                 document.getElementById('lt').value = p.coords.latitude.toFixed(7);
@@ -142,6 +160,7 @@ async def home():
                 map.setView([p.coords.latitude, p.coords.longitude], 14); marker.setLatLng([p.coords.latitude, p.coords.longitude]);
             }, null, {enableHighAccuracy:true});
         }
+
         function st() {
             let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value;
             if(t=="MANUAL") t = document.getElementById('manTag').value;
@@ -149,6 +168,7 @@ async def home():
             document.getElementById('st_text').innerText="FIRING";
             mon = setInterval(() => { fetch('/status').then(r=>r.json()).then(d=> { document.getElementById('c').innerText = d.c; }); }, 1000);
         }
+
         function sp() { fetch('/stop'); clearInterval(mon); document.getElementById('st_text').innerText="IDLE"; }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
     </script></body></html>
