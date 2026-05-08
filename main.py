@@ -39,7 +39,17 @@ def stop():
     return {"ok": True}
 
 @app.get("/fetch_data")
-async def fetch_api(vno: str): return await fetch_vehicle_data(vno)
+async def fetch_api(vno: str):
+    # 🔥 Database Fetch Hard Fix: Formatting response for frontend
+    data = await fetch_vehicle_data(vno)
+    if data:
+        return {
+            "found": True, 
+            "imei": data.get('IMEI_No'), 
+            "lat": data.get('Lat'), 
+            "lon": data.get('Lon')
+        }
+    return {"found": False}
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -116,8 +126,11 @@ async def home():
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
             let res = await fetch(`${DB}/users/${n}.json`);
             let data = await res.json();
-            if(data && data.password == p) { curUser = { ...data, mobile: n }; if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser)); showDash(); }
-            else alert("WRONG PASSWORD");
+            if(data && data.password == p) { 
+                curUser = { ...data, mobile: n }; 
+                if(document.getElementById('rem').checked) localStorage.setItem('nitro_user', JSON.stringify(curUser));
+                showDash(); 
+            } else alert("WRONG PASSWORD");
         }
         window.onload = () => { let s = localStorage.getItem('nitro_user'); if(s){ curUser = JSON.parse(s); showDash(); } }
         async function showDash() {
@@ -136,12 +149,27 @@ async def home():
             document.getElementById('m_dot').classList.add('online'); 
             document.getElementById('d_dot').classList.add('online'); 
             if(d.f) document.getElementById('e_dot').classList.add('online'); else document.getElementById('e_dot').classList.remove('online'); 
-            document.getElementById('c').innerText = d.c; 
-            document.getElementById('a_total').innerText = d.c; 
-            document.getElementById('a_ok').innerText = d.c; 
+            document.getElementById('c').innerText = d.c; document.getElementById('a_total').innerText = d.c; document.getElementById('a_ok').innerText = d.c; 
             document.getElementById('pBar').style.width = (d.c % 101) + "%"; 
         }); }, 1000);
-        async function smartFetch() { let v = document.getElementById('v').value.toUpperCase().trim(); if(!v) return; let res = await fetch(`/fetch_data?vno=${v}`); let d = await res.json(); if(d.found){ document.getElementById('i').value = d.imei; let lat = document.getElementById('useDef').checked ? curUser.lat : d.lat; let lon = document.getElementById('useDef').checked ? curUser.lon : d.lon; document.getElementById('lt').value = lat; document.getElementById('ln').value = lon; map.setView([lat, lon], 15); marker.setLatLng([lat, lon]); } }
+
+        async function smartFetch() { 
+            let v = document.getElementById('v').value.toUpperCase().trim(); 
+            if(!v) return; 
+            let res = await fetch(`/fetch_data?vno=${v}`); 
+            let d = await res.json(); 
+            if(d.found){ 
+                document.getElementById('i').value = d.imei; 
+                // 🔥 Default Location Hard Fix Logic
+                let lat = document.getElementById('useDef').checked ? (curUser.lat || d.lat) : d.lat;
+                let lon = document.getElementById('useDef').checked ? (curUser.lon || d.lon) : d.lon;
+                document.getElementById('lt').value = lat; 
+                document.getElementById('ln').value = lon; 
+                map.setView([lat, lon], 15); 
+                marker.setLatLng([lat, lon]);
+            } 
+        }
+
         function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); document.getElementById('st_text').innerText="FIRING"; }
         function sp() { fetch('/stop'); document.getElementById('st_text').innerText="IDLE"; }
         function logout() { localStorage.removeItem('nitro_user'); location.reload(); }
