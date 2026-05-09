@@ -23,7 +23,7 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         engine.total_sent = 0
         stop_event.clear()
         
-        # 🔥 Sequential Firing Logic for Checksum Stability
+        # 🔥 Sequential Firing Logic for Checksum Stability & Count Fix
         target_tags = TAGS if t_up == "ALL" else [t_up]
         
         def nitro_sequential_fire():
@@ -42,7 +42,7 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
                     # Fire Packet with specific tag
                     threading.Thread(target=engine.handshake_worker, args=(tag, i, v_up, lt, ln), daemon=True).start()
                     
-                    # 🔥 Critical Gap for Server Acceptance & Checksum Fix
+                    # 🔥 Important: Critical Gap for Server Acceptance & Count Update
                     time.sleep(0.5 if t_up == "ALL" else 0.1)
 
         threading.Thread(target=nitro_sequential_fire, daemon=True).start()
@@ -88,17 +88,17 @@ async def home():
         #map { width:100%; height:200px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
         .user-wall { background:#001a00; border:1px solid #0f0; padding:12px; margin-top:10px; font-size:13px; display:none; color:red; border-radius:5px; width:100%; }
         .nav { width:95%; max-width:440px; display:flex; justify-content:space-between; font-size:12px; margin-top:15px; color:#fff; }
-        #overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; justify-content:center; align-items:center; }
-        .popup { width:350px; border:2px solid #ff0; padding:25px; background:#111; color:#fff; text-align:center; border-radius:15px; box-shadow: 0 0 30px #ff0; }
     </style></head><body>
-    <div id="overlay"><div class="popup"><h3>📢 SYSTEM ALERT</h3><p id="bc_text">...</p><button onclick="closeBC()">UNDERSTOOD</button></div></div>
+
     <div class="login-box" id="loginScreen">
         <h1 style="text-align:center;font-size:24px;letter-spacing:5px;">Ghop-Ghop GPS</h1>
         <input type="text" id="m_num" placeholder="MOBILE NUMBER"><input type="password" id="m_pass" placeholder="PASSWORD">
         <div class="chk-group" style="justify-content: center;"><input type="checkbox" id="rem" checked> <label for="rem">Remember Me</label></div>
         <button onclick="login()" style="background:#0f0;color:#000;border:none;margin-top:20px;">ACCESS SYSTEM</button>
     </div>
-    <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;">[ LOGOUT ]</span></div>
+
+    <div class="nav" id="dashNav" style="display:none;"><span>USER: <b id="u_name" style="color:#0f0"></b></span><span onclick="logout()" style="color:red;cursor:pointer;font-weight:bold;">[ LOGOUT ]</span></div>
+    
     <div class="dashboard" id="dashScreen" style="display:none;">
         <div class="conn-box"><span><span class="dot online" id="m_dot"></span>MAIN.PY</span><span><span class="dot" id="e_dot"></span>ENGINE.PY</span><span><span class="dot" id="d_dot"></span>DATABASE.PY</span></div>
         <div class="audit-box"><div>OK<b id="a_ok">0</b></div><div>FAIL<b id="a_fail">0</b></div><div>TOTAL<b id="a_total">0</b></div></div>
@@ -113,7 +113,7 @@ async def home():
         </select>
         <div class="chk-group"><input type="checkbox" id="useDef"> <label for="useDef">Use Profile Default Location</label></div>
         <div style="display:flex;gap:5px;margin-top:10px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-        <button onclick="getLocation()" style="font-size:11px;border-style:dashed;">[[ GET CURRENT LOCATION ]]</button>
+        <button onclick="getLocation()" style="font-size:11px;border-style:dashed;margin-top:5px;">[[ GET CURRENT LOCATION ]]</button>
         <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START INJECTION</button>
         <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
         <button onclick="location.reload()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
@@ -121,10 +121,12 @@ async def home():
         <div id="map"></div>
         <div style="display:flex;justify-content:space-between;margin-top:15px;font-size:14px;"><span>SENT: <b id="c">0</b></span><span id="st_text" style="color:lime">IDLE</span></div>
     </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
         let map, marker, curUser = null;
+
         function initMap() { if (map) return; map = L.map('map').setView([24.91, 83.79], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([24.91, 83.79]).addTo(map); }
         async function login() {
             let n = document.getElementById('m_num').value.trim(), p = document.getElementById('m_pass').value.trim();
@@ -137,11 +139,21 @@ async def home():
             document.getElementById('loginScreen').style.display='none'; document.getElementById('dashScreen').style.display='block'; document.getElementById('dashNav').style.display='flex'; document.getElementById('u_name').innerText = curUser.mobile;
             initMap();
             let today = new Date().toISOString().split('T')[0];
-            fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad => { if(ad) { document.getElementById('a_ok').innerText = ad.ok || 0; document.getElementById('a_fail').innerText = ad.fail || 0; document.getElementById('a_total').innerText = ad.total || 0; } });
-            fetch(`${DB}/user_messages/${curUser.mobile}.json`).then(r=>r.json()).then(mData => { if(mData && mData.text) { let wall = document.getElementById('u_wall'); wall.innerHTML = `● <b>ADMIN:</b> ${mData.text}`; wall.style.display = 'block'; } });
+            fetch(`${DB}/User_Audit/${today}/${curUser.mobile}.json`).then(r=>r.json()).then(ad => {
+                if(ad) { document.getElementById('a_ok').innerText = ad.ok || 0; document.getElementById('a_fail').innerText = ad.fail || 0; document.getElementById('a_total').innerText = ad.total || 0; }
+            });
+            fetch(`${DB}/user_messages/${curUser.mobile}.json`).then(r=>r.json()).then(mData => {
+                if(mData && mData.text) { let wall = document.getElementById('u_wall'); wall.innerHTML = `● <b>ADMIN:</b> ${mData.text}`; wall.style.display = 'block'; }
+            });
         }
         function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value = p.coords.latitude.toFixed(7); document.getElementById('ln').value = p.coords.longitude.toFixed(7); map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]); }, (e)=>alert(e.message), {enableHighAccuracy:true}); }
-        setInterval(() => { fetch('/status').then(r=>r.json()).then(d=> { document.getElementById('m_dot').classList.add('online'); document.getElementById('d_dot').classList.add('online'); if(d.f) { document.getElementById('e_dot').classList.add('online'); document.getElementById('c').innerText = d.c; document.getElementById('st_text').innerText = 'FIRING'; document.getElementById('st_text').style.color = 'red'; document.getElementById('pBar').style.width = (d.c % 101) + "%"; } else { document.getElementById('e_dot').classList.remove('online'); } }); }, 1000);
+        
+        setInterval(() => { fetch('/status').then(r=>r.json()).then(d=> { 
+            document.getElementById('m_dot').classList.add('online'); document.getElementById('d_dot').classList.add('online'); 
+            if(d.f) { document.getElementById('e_dot').classList.add('online'); document.getElementById('c').innerText = d.c; document.getElementById('st_text').innerText = 'FIRING'; document.getElementById('st_text').style.color = 'red'; document.getElementById('pBar').style.width = (d.c % 101) + "%"; }
+            else { document.getElementById('e_dot').classList.remove('online'); }
+        }); }, 1000);
+
         async function smartFetch() { 
             let v = document.getElementById('v').value.toUpperCase().trim(); if(!v) return; 
             let res = await fetch(`/fetch_data?vno=${v}`); let d = await res.json(); 
