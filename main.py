@@ -77,7 +77,7 @@ async def fetch_api(vno: str):
         if data: return {"found": True, "imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')}
     return {"found": False}
 
-# --- 4. CLEAN UI (NO YELLOW STRIP, FIXED UNDEFINED) ---
+# --- 4. UI FIXES (ADMIN MSG, LEFT ALIGN, REMEMBER ME) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -90,26 +90,27 @@ async def home():
         body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         .login-box { width: 100%; max-width: 350px; border: 2px solid #0f0; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px #0f0; text-align: center; }
+        .rem-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 15px; color: #fff; font-size: 13px; }
         .header { width: 100%; max-width: 440px; padding: 15px 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; margin-top: 10px; }
         .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:10px; text-align:center; }
-        .admin-msg-box { color: yellow; font-size: 11px; margin-bottom: 10px; border: 1px dashed yellow; padding: 5px; width: 100%; }
+        .admin-msg-box { color: yellow; font-size: 12px; margin-bottom: 12px; border: 1px dashed yellow; padding: 8px; width: 100%; font-weight: bold; }
         .audit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 15px; }
         .audit-item { border: 1px solid #0f0; padding: 5px; font-size: 9px; border-radius: 5px; background: rgba(0,255,0,0.05); }
         .audit-item b { display: block; font-size: 12px; color: #fff; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; transition: 0.3s; }
-        button:active { background: #0f0; color: #000; }
+        .left-row { text-align: left; margin: 12px 0; color: #fff; font-size: 12px; width: 100%; display: flex; align-items: center; gap: 8px; }
+        button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         #map { width:100%; height:180px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
-        .wa-link { margin-top: 15px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 13px; }
+        .wa-link { margin-top: 20px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 13px; font-weight: bold; }
     </style></head><body>
 
     <div id="loginPage" class="login-overlay">
         <div class="login-box">
-            <h2 style="color:#0f0; letter-spacing:3px;">SYSTEM LOGIN</h2>
+            <h2 style="color:#0f0; letter-spacing:3px;">GHOP-GHOP LOGIN</h2>
             <input type="text" id="l_mob" placeholder="MOBILE NUMBER">
             <input type="password" id="l_pass" placeholder="PASSWORD">
-            <div style="display:flex; justify-content:space-between; margin-top:15px; font-size:12px; color:#fff;">
-                <label><input type="checkbox" id="remMe"> Remember Me</label>
+            <div class="rem-row">
+                <input type="checkbox" id="remMe"> <label for="remMe">Remember Me</label>
             </div>
             <button onclick="doLogin()" style="background:#0f0; color:#000; margin-top:20px;">ACCESS SYSTEM</button>
             <div class="wa-link" onclick="window.open('https://wa.me/917464010787')">CONTACT US ON WHATSAPP</div>
@@ -123,7 +124,7 @@ async def home():
         </div>
         
         <div class="dashboard">
-            <div id="adminMsg" class="admin-msg-box">LOADING SYSTEM COMMANDS...</div>
+            <div id="adminMsg" class="admin-msg-box">LOADING...</div>
             
             <div class="audit-grid">
                 <div class="audit-item">OK<b id="a_ok">0</b></div>
@@ -136,10 +137,10 @@ async def home():
             <input type="text" id="i" placeholder="IMEI">
             <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
             
-            <select id="tagSel"><option value="ALL">ALL TAGS (AIS-140)</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
+            <select id="tagSel"><option value="ALL">Auto</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
             
-            <div style="text-align:right; margin:10px 0; color:#fff; font-size:11px;">
-                <label>Use Profile Default Location <input type="checkbox" id="useDef"></label>
+            <div class="left-row">
+                <input type="checkbox" id="useDef"> <label for="useDef">Default Location</label>
             </div>
 
             <button onclick="getLocation()" style="border-style:dashed;font-size:11px;">[[ GET CURRENT LOCATION ]]</button>
@@ -211,8 +212,9 @@ async def home():
                         document.getElementById('a_total').innerText = (ad.ok||0)+(ad.fail||0)+(ad.error||0);
                     }
                 });
+                // Admin Message Fetch Logic Fix
                 fetch(`${DB}/Admin_Settings.json`).then(r=>r.json()).then(s=>{ 
-                    if(s) document.getElementById('adminMsg').innerText = s.message; 
+                    if(s && s.message) document.getElementById('adminMsg').innerText = s.message; 
                 });
             }, 2000);
         }
