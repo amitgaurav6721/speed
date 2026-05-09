@@ -49,7 +49,7 @@ def nitro_firing_loop(v_up, i, lt, ln, t_up):
             executor.submit(handshake_worker, tag, i, v_up, lt, ln)
         time.sleep(0.05)
 
-# --- 3. API ROUTES ---
+# --- 3. API ROUTES (STRICTLY UNCHANGED) ---
 @app.get("/init")
 async def init(v:str, i:str, lt:str, ln:str, t:str, background_tasks: BackgroundTasks):
     global packet_count
@@ -77,7 +77,7 @@ async def fetch_api(vno: str):
         if data: return {"found": True, "imei": data.get('IMEI_No'), "lat": data.get('Lat'), "lon": data.get('Lon')}
     return {"found": False}
 
-# --- 4. UI FIXES (ADMIN MSG, LEFT ALIGN, REMEMBER ME) ---
+# --- 4. UI (CENTERED ALIGNMENT & POPUP FIX) ---
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return """
@@ -87,32 +87,42 @@ async def home():
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; }
-        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; }
+        body { background:#000; color:#0f0; font-family:monospace; margin:0; display:flex; flex-direction:column; align-items:center; min-height:100vh; overflow-x: hidden; }
         .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         .login-box { width: 100%; max-width: 350px; border: 2px solid #0f0; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px #0f0; text-align: center; }
-        .rem-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 15px; color: #fff; font-size: 13px; }
+        .popup-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: none; justify-content: center; align-items: center; }
+        .popup-box { width: 85%; max-width: 350px; background: #111; border: 2px solid cyan; padding: 20px; border-radius: 15px; text-align: center; box-shadow: 0 0 20px cyan; }
         .header { width: 100%; max-width: 440px; padding: 15px 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; margin-top: 10px; }
         .dashboard { width:95%; max-width:440px; border:2px solid #0f0; padding:15px; background:rgba(0,10,0,0.95); border-radius:15px; box-shadow: 0 0 25px #0f0; margin-top:10px; text-align:center; }
-        .admin-msg-box { color: yellow; font-size: 12px; margin-bottom: 12px; border: 1px dashed yellow; padding: 8px; width: 100%; font-weight: bold; }
+        .admin-msg-box { color: yellow; font-size: 12px; margin-bottom: 12px; border: 1px dashed yellow; padding: 8px; width: 100%; font-weight: bold; min-height: 35px; }
         .audit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 15px; }
         .audit-item { border: 1px solid #0f0; padding: 5px; font-size: 9px; border-radius: 5px; background: rgba(0,255,0,0.05); }
         .audit-item b { display: block; font-size: 12px; color: #fff; }
         input, select { width:100%; background:#000; border:1px solid #333; color:#0f0; padding:12px; margin-top:10px; outline:none; text-transform:uppercase; font-size:16px; border-radius:5px; }
-        .left-row { text-align: left; margin: 12px 0; color: #fff; font-size: 12px; width: 100%; display: flex; align-items: center; gap: 8px; }
+        .center-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0; color: #fff; font-size: 14px; width: 100%; }
+        .center-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0; cursor: pointer; }
         button { width:100%; padding:14px; margin-top:10px; cursor:pointer; border:1px solid #0f0; background:transparent; color:#0f0; font-weight:bold; border-radius:5px; }
         #map { width:100%; height:180px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
         .wa-link { margin-top: 20px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 13px; font-weight: bold; }
     </style></head><body>
 
+    <div id="bcPopup" class="popup-overlay">
+        <div class="popup-box">
+            <h3 style="color:cyan; margin-top:0;">BROADCAST</h3>
+            <p id="bcMsg" style="color:white; font-size:14px; line-height:1.4;">FETCHING...</p>
+            <button onclick="closeBC()" style="border-color:cyan; color:cyan; margin-top:15px; width: 100px; padding: 10px;">OK</button>
+        </div>
+    </div>
+
     <div id="loginPage" class="login-overlay">
         <div class="login-box">
-            <h2 style="color:#0f0; letter-spacing:3px;">GHOP-GHOP LOGIN</h2>
+            <h2 style="color:#0f0; letter-spacing:3px;">SYSTEM LOGIN</h2>
             <input type="text" id="l_mob" placeholder="MOBILE NUMBER">
             <input type="password" id="l_pass" placeholder="PASSWORD">
-            <div class="rem-row">
-                <input type="checkbox" id="remMe"> <label for="remMe">Remember Me</label>
+            <div class="center-row">
+                <input type="checkbox" id="remMe"> <label for="remMe" style="cursor:pointer;">Remember Me</label>
             </div>
-            <button onclick="doLogin()" style="background:#0f0; color:#000; margin-top:20px;">ACCESS SYSTEM</button>
+            <button onclick="doLogin()" style="background:#0f0; color:#000; margin-top:10px;">ACCESS SYSTEM</button>
             <div class="wa-link" onclick="window.open('https://wa.me/917464010787')">CONTACT US ON WHATSAPP</div>
         </div>
     </div>
@@ -122,37 +132,29 @@ async def home():
             <span>USER: <b id="u_name" style="color:white;">---</b></span>
             <span style="color:#f00; cursor:pointer; font-weight:bold;" onclick="logout()">LOGOUT</span>
         </div>
-        
         <div class="dashboard">
-            <div id="adminMsg" class="admin-msg-box">LOADING...</div>
-            
+            <div id="adminMsg" class="admin-msg-box">CHECKING COMMANDS...</div>
             <div class="audit-grid">
                 <div class="audit-item">OK<b id="a_ok">0</b></div>
                 <div class="audit-item">FAIL<b id="a_fail">0</b></div>
                 <div class="audit-item">ERR<b id="a_err">0</b></div>
                 <div class="audit-item">TOTAL<b id="a_total">0</b></div>
             </div>
-
             <input type="text" id="v" onblur="smartFetch()" placeholder="VEHICLE NUMBER">
             <input type="text" id="i" placeholder="IMEI">
             <div style="display:flex;gap:5px;"><input type="text" id="lt" placeholder="LAT"><input type="text" id="ln" placeholder="LON"></div>
+            <select id="tagSel"><option value="ALL">ALL TAGS (AIS-140)</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
             
-            <select id="tagSel"><option value="ALL">Auto</option>""" + "".join([f'<option value="{t}">{t}</option>' for t in TAGS]) + """</select>
-            
-            <div class="left-row">
-                <input type="checkbox" id="useDef"> <label for="useDef">Default Location</label>
+            <div class="center-row">
+                <input type="checkbox" id="useDef"> <label for="useDef" style="cursor:pointer;">Default Location</label>
             </div>
 
             <button onclick="getLocation()" style="border-style:dashed;font-size:11px;">[[ GET CURRENT LOCATION ]]</button>
             <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START ATTACK</button>
             <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
             <button onclick="resetSys()" style="color:yellow;border-color:yellow;font-size:11px;">RESET SYSTEM</button>
-            
             <div id="map"></div>
-            <div style="display:flex;justify-content:space-between;margin-top:15px;font-size:13px;">
-                <span>SENT: <b id="c">0</b></span>
-                <span id="st_text" style="color:lime">IDLE</span>
-            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:15px;font-size:13px;"><span>SENT: <b id="c">0</b></span><span id="st_text" style="color:lime">IDLE</span></div>
         </div>
     </div>
 
@@ -172,6 +174,8 @@ async def home():
             }
         };
 
+        function closeBC() { document.getElementById('bcPopup').style.display = 'none'; }
+
         function doLogin() {
             let m = document.getElementById('l_mob').value.trim();
             let p = document.getElementById('l_pass').value.trim();
@@ -183,19 +187,23 @@ async def home():
                     document.getElementById('u_name').innerText = u.name || m;
                     document.getElementById('loginPage').style.display = 'none';
                     document.getElementById('mainUI').style.display = 'block';
+                    
+                    // DB PATH FIX: app_config/broadcast/text
+                    fetch(`${DB}/app_config/broadcast.json`).then(r=>r.json()).then(s=>{
+                        if(s && s.text) {
+                            document.getElementById('bcMsg').innerText = s.text;
+                            document.getElementById('bcPopup').style.display = 'flex';
+                        }
+                    });
+
                     initMap(); startSync();
                 } else { alert("ACCESS DENIED!"); }
             });
         }
 
         function logout() { localStorage.removeItem('nitro_creds'); location.reload(); }
+        function initMap() { map = L.map('map').setView([25.63, 84.78], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([25.63, 84.78]).addTo(map); }
         
-        function initMap() { 
-            map = L.map('map').setView([25.63, 84.78], 13); 
-            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); 
-            marker = L.marker([25.63, 84.78]).addTo(map); 
-        }
-
         function startSync() {
             setInterval(() => {
                 fetch('/status').then(r=>r.json()).then(d=> {
@@ -212,11 +220,12 @@ async def home():
                         document.getElementById('a_total').innerText = (ad.ok||0)+(ad.fail||0)+(ad.error||0);
                     }
                 });
-                // Admin Message Fetch Logic Fix
-                fetch(`${DB}/Admin_Settings.json`).then(r=>r.json()).then(s=>{ 
-                    if(s && s.message) document.getElementById('adminMsg').innerText = s.message; 
+                // DB PATH FIX: user_messages/MOBILE/text
+                fetch(`${DB}/user_messages/${currentUser}.json`).then(r=>r.json()).then(s=>{ 
+                    if(s && s.text) document.getElementById('adminMsg').innerText = s.text; 
+                    else document.getElementById('adminMsg').innerText = "SYSTEM SECURE";
                 });
-            }, 2000);
+            }, 2500);
         }
 
         async function smartFetch() {
@@ -231,20 +240,8 @@ async def home():
             }
         }
 
-        function getLocation() { 
-            navigator.geolocation.getCurrentPosition(p=>{ 
-                document.getElementById('lt').value = p.coords.latitude.toFixed(7); 
-                document.getElementById('ln').value = p.coords.longitude.toFixed(7); 
-                map.setView([p.coords.latitude, p.coords.longitude], 15); 
-                marker.setLatLng([p.coords.latitude, p.coords.longitude]); 
-            }); 
-        }
-
-        function st() { 
-            let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; 
-            fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); 
-        }
-        
+        function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value = p.coords.latitude.toFixed(7); document.getElementById('ln').value = p.coords.longitude.toFixed(7); map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]); }); }
+        function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); }
         function sp() { fetch('/stop'); }
         function resetSys() { fetch('/stop'); document.getElementById('v').value=''; document.getElementById('i').value=''; document.getElementById('lt').value=''; document.getElementById('ln').value=''; }
     </script></body></html>
