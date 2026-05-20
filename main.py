@@ -197,7 +197,7 @@ async def home():
                     
                     fetch(`${DB}/app_config/broadcast.json`).then(r=>r.json()).then(s=>{
                         if(s && s.text) {
-                            document.getElementById('bcMsg').innerText = s.text;
+                            document.getElementById('bcMsg').innerHTML = s.text;
                             document.getElementById('bcPopup').style.display = 'flex';
                         }
                     });
